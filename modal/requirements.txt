@@ -1,0 +1,5 @@
+modal
+httpx
+google-cloud-vision
+openai
+edge-tts

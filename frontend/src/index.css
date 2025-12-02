@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+code, pre, .font-mono {
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}
+
+/* Focus styles */
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  ring: 2px;
+  ring-color: #10b981;
+}
+
+/* Table editable cells */
+.editable-cell {
+  @apply px-2 py-1.5 bg-transparent border border-transparent rounded;
+  @apply hover:border-zinc-700 focus:border-emerald-500 focus:bg-zinc-800/50;
+  @apply transition-colors;
+}
+
+.editable-cell:focus {
+  outline: none;
+}

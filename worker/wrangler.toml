@@ -1,0 +1,38 @@
+name = "anki-capture-api"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+MODAL_WEBHOOK_SECRET = "netsuiteapi"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "anki-capture"
+database_id = "36d8f48b-cbee-478f-831e-5828aaff9e28"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "anki-capture-files"
+preview_bucket_name = "anki-capture-files-dev"
+
+# For local development
+[env.dev]
+vars = { ENVIRONMENT = "development" }
+
+[env.dev.d1_databases]
+binding = "DB"
+database_name = "anki-capture-dev"
+database_id = "local"
+
+# Production
+[env.production]
+vars = { ENVIRONMENT = "production", MODAL_WEBHOOK_SECRET = "netsuiteapi" }
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "anki-capture"
+database_id = "36d8f48b-cbee-478f-831e-5828aaff9e28"
+
+[[env.production.r2_buckets]]
+binding = "BUCKET"
+bucket_name = "anki-capture-files"
