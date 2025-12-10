@@ -124,13 +124,17 @@ function PhraseCard({
   onUpdate, 
   onApprove, 
   onDelete,
-  onRegenerateAudio
+  onRegenerateAudio,
+  regenerating,
+  audioBust,
 }: { 
   phrase: Phrase;
   onUpdate: (updates: Partial<Phrase>) => Promise<void>;
   onApprove: () => Promise<void>;
   onDelete: () => Promise<void>;
   onRegenerateAudio: () => Promise<void>;
+  regenerating: boolean;
+  audioBust?: string;
 }) {
   const [saving, setSaving] = useState(false)
   const [localPhrase, setLocalPhrase] = useState(phrase)
@@ -232,19 +236,29 @@ function PhraseCard({
                 <audio 
                   controls 
                   className="flex-1 h-10"
-                  src={getFileUrl(phrase.audio_url)}
+                  src={`${getFileUrl(phrase.audio_url)}${audioBust ? `?v=${audioBust}` : ''}`}
                 />
               ) : (
                 <span className="text-zinc-500 text-sm">No audio</span>
               )}
               <button
                 onClick={onRegenerateAudio}
-                className="px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
+                disabled={regenerating}
+                className={`px-3 py-2 text-sm rounded-lg transition-colors ${
+                  regenerating 
+                    ? 'bg-zinc-800 text-zinc-400 cursor-not-allowed' 
+                    : 'bg-zinc-800 hover:bg-zinc-700'
+                }`}
                 title="Regenerate audio from source text"
               >
-                🔄
+                {regenerating ? 'Regenerating…' : '🔄'}
               </button>
             </div>
+            {regenerating && (
+              <div className="mt-2 h-1 w-full bg-zinc-800 rounded overflow-hidden">
+                <div className="h-full w-1/3 bg-emerald-500 animate-pulse" />
+              </div>
+            )}
           </div>
         </div>
 
@@ -307,6 +321,8 @@ export default function ReviewPage() {
   const [error, setError] = useState<string | null>(null)
   const [approvingAll, setApprovingAll] = useState(false)
   const [approvedCount, setApprovedCount] = useState(0)
+  const [regeneratingIds, setRegeneratingIds] = useState<Set<string>>(new Set())
+  const [audioBust, setAudioBust] = useState<Record<string, string>>({})
 
   const loadPhrases = useCallback(async () => {
     try {
@@ -342,8 +358,21 @@ export default function ReviewPage() {
   }
 
   const handleRegenerateAudio = async (id: string) => {
-    await regenerateAudio(id)
-    await loadPhrases()
+    // Optimistically show progress and prevent multiple taps
+    setRegeneratingIds(prev => new Set(prev).add(id))
+    try {
+      await regenerateAudio(id)
+      // Give backend a moment to produce new audio, then bust cache and refresh
+      await new Promise(r => setTimeout(r, 4000))
+      setAudioBust(prev => ({ ...prev, [id]: String(Date.now()) }))
+      await loadPhrases()
+    } finally {
+      setRegeneratingIds(prev => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
+    }
   }
 
   const handleApproveAll = async () => {
@@ -430,6 +459,8 @@ export default function ReviewPage() {
               onApprove={() => handleApprove(phrase.id)}
               onDelete={() => handleDelete(phrase.id)}
               onRegenerateAudio={() => handleRegenerateAudio(phrase.id)}
+              regenerating={regeneratingIds.has(phrase.id)}
+              audioBust={audioBust[phrase.id]}
             />
           ))}
         </div>

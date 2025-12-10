@@ -1,5 +1,6 @@
 import { Env, PhraseStatus, Phrase, VocabItem } from '../types';
 import { getPhrase, listPhrases, updatePhrase, deletePhrase } from '../lib/db';
+import { deleteFile } from '../lib/r2';
 import { triggerProcessing, buildFileUrl } from '../lib/modal';
 
 // GET /api/phrases
@@ -156,9 +157,25 @@ export async function handleDeletePhrase(
     return Response.json({ error: 'Phrase not found' }, { status: 404 });
   }
   
+  // Capture keys for best-effort cleanup after DB delete
+  const keysToDelete: string[] = [];
+  if (phrase.original_file_url) keysToDelete.push(phrase.original_file_url);
+  if (phrase.audio_url) keysToDelete.push(phrase.audio_url);
+
+  // Delete DB record first; do not block on storage cleanup
   await deletePhrase(env, id);
-  
-  // TODO: Also delete files from R2
-  
+
+  // Best-effort deletion of associated R2 objects
+  await Promise.allSettled(
+    keysToDelete.map(async (key) => {
+      try {
+        await deleteFile(env, key);
+        console.log('Deleted R2 object', { phrase_id: id, key });
+      } catch (err) {
+        console.error('Failed to delete R2 object', { phrase_id: id, key, error: err instanceof Error ? err.message : String(err) });
+      }
+    })
+  );
+
   return Response.json({ message: 'Phrase deleted' });
 }

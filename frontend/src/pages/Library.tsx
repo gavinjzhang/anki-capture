@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { listPhrases, updatePhrase, Phrase } from '../lib/api'
+import { listPhrases, updatePhrase, deletePhrase as apiDeletePhrase, Phrase } from '../lib/api'
 
 type StatusFilter = 'all' | 'processing' | 'pending_review' | 'approved' | 'exported'
 
@@ -7,6 +7,7 @@ export default function LibraryPage() {
   const [phrases, setPhrases] = useState<Phrase[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<StatusFilter>('all')
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const loadPhrases = async () => {
     setLoading(true)
@@ -26,6 +27,17 @@ export default function LibraryPage() {
   const toggleExclude = async (phrase: Phrase) => {
     await updatePhrase(phrase.id, { exclude_from_export: !phrase.exclude_from_export })
     await loadPhrases()
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Delete this phrase?')) return
+    setDeletingId(id)
+    try {
+      await apiDeletePhrase(id)
+      await loadPhrases()
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   const statusCounts = phrases.reduce((acc, p) => {
@@ -92,6 +104,7 @@ export default function LibraryPage() {
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Date</th>
                   <th className="px-4 py-3 text-center">Export</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
@@ -148,6 +161,19 @@ export default function LibraryPage() {
                           )}
                         </button>
                       )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => handleDelete(phrase.id)}
+                        disabled={deletingId === phrase.id}
+                        className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                          deletingId === phrase.id
+                            ? 'text-zinc-400 bg-zinc-800 cursor-not-allowed'
+                            : 'text-red-400 hover:bg-red-500/20'
+                        }`}
+                      >
+                        {deletingId === phrase.id ? 'Deleting…' : 'Delete'}
+                      </button>
                     </td>
                   </tr>
                 ))}
