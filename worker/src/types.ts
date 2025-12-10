@@ -39,6 +39,7 @@ export interface Phrase {
   job_started_at: number | null;
   job_attempts: number;
   last_error: string | null;
+  current_job_id: string | null;
   created_at: number;
   reviewed_at: number | null;
   exported_at: number | null;
@@ -62,6 +63,7 @@ export interface PhraseRow {
   job_started_at: number | null;
   job_attempts: number | null;
   last_error: string | null;
+  current_job_id: string | null;
   created_at: number;
   reviewed_at: number | null;
   exported_at: number | null;
@@ -90,4 +92,5 @@ export interface ModalWebhookPayload {
   success: boolean;
   result?: ProcessingResult;
   error?: string;
+  job_id?: string;
 }

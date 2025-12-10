@@ -9,6 +9,7 @@ export interface ProcessingJob {
   source_text: string | null;   // Direct text for text input
   language: Language | null;    // Forced language (for text input or reprocessing)
   webhook_url: string;
+  job_id: string;
 }
 
 export async function triggerProcessing(

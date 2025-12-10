@@ -9,6 +9,7 @@ function rowToPhrase(row: PhraseRow): Phrase {
     status: row.status as PhraseStatus,
     exclude_from_export: Boolean(row.exclude_from_export),
     job_attempts: row.job_attempts ?? 0,
+    current_job_id: row.current_job_id ?? null,
   };
 }
 
@@ -24,10 +25,10 @@ export async function createPhrase(
   await env.DB.prepare(`
     INSERT INTO phrases (
       id, user_id, source_type, original_file_url, source_text, detected_language,
-      status, created_at, job_started_at, job_attempts
+      status, created_at, job_started_at, job_attempts, current_job_id
     )
-    VALUES (?, ?, ?, ?, ?, ?, 'processing', ?, ?, 1)
-  `).bind(id, userId, sourceType, originalFileUrl, sourceText, language, Date.now(), Date.now()).run();
+    VALUES (?, ?, ?, ?, ?, ?, 'processing', ?, NULL, 0, NULL)
+  `).bind(id, userId, sourceType, originalFileUrl, sourceText, language, Date.now()).run();
 }
 
 export async function getPhrase(env: Env, id: string): Promise<Phrase | null> {
@@ -245,11 +246,20 @@ export async function updatePhraseForUser(
   await env.DB.prepare(`UPDATE phrases SET ${setClauses.join(', ')} WHERE id = ? AND (user_id = ? OR user_id IS NULL)`).bind(...values).run();
 }
 
-export async function beginProcessingForUser(env: Env, userId: string, id: string): Promise<void> {
+export async function setCurrentJobForUser(env: Env, userId: string, id: string, jobId: string, setStatusProcessing = false): Promise<void> {
+  const fields = [
+    'current_job_id = ?',
+    'job_started_at = ?',
+    'job_attempts = COALESCE(job_attempts,0) + 1',
+    'last_error = NULL'
+  ];
+  const values: (string|number)[] = [jobId, Date.now()];
+  if (setStatusProcessing) {
+    fields.push("status = 'processing'");
+  }
   await env.DB.prepare(`
-    UPDATE phrases SET status = 'processing', job_started_at = ?, job_attempts = COALESCE(job_attempts,0) + 1, last_error = NULL
-    WHERE id = ? AND (user_id = ? OR user_id IS NULL)
-  `).bind(Date.now(), id, userId).run();
+    UPDATE phrases SET ${fields.join(', ')} WHERE id = ? AND (user_id = ? OR user_id IS NULL)
+  `).bind(...values, id, userId).run();
 }
 
 export async function sweepProcessingTimeouts(env: Env, timeoutMs: number): Promise<number> {

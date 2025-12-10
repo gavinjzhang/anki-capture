@@ -9,7 +9,7 @@ import {
 import { deleteFile } from '../lib/r2';
 import { triggerProcessing, buildFileUrl } from '../lib/modal';
 import { getUserId } from '../lib/auth';
-import { beginProcessingForUser } from '../lib/db';
+import { setCurrentJobForUser } from '../lib/db';
 
 // GET /api/phrases
 export async function handleListPhrases(
@@ -70,7 +70,8 @@ export async function handleUpdatePhrase(
     const requestUrl = new URL(request.url);
     
     await updatePhraseForUser(env, userId, id, { detected_language: body.detected_language });
-    await beginProcessingForUser(env, userId, id);
+    const jobId = crypto.randomUUID();
+    await setCurrentJobForUser(env, userId, id, jobId, true);
     
     await triggerProcessing(env, {
       phrase_id: id,
@@ -81,6 +82,7 @@ export async function handleUpdatePhrase(
       source_text: phrase.source_text,
       language: body.detected_language,
       webhook_url: '',
+      job_id: jobId,
     }, requestUrl);
     
     return Response.json({ 
@@ -126,7 +128,7 @@ export async function handleRegenerateAudio(
   env: Env,
   id: string
 ): Promise<Response> {
-  const userId = getUserId(request, env);
+  const userId = await getUserId(request, env);
   const phrase = await getPhraseForUser(env, userId, id);
   
   if (!phrase) {
@@ -144,6 +146,8 @@ export async function handleRegenerateAudio(
   const requestUrl = new URL(request.url);
   
   // We'll handle this as a special "regenerate_audio" job type
+  const jobId = crypto.randomUUID();
+  await setCurrentJobForUser(env, userId, id, jobId, false);
   await triggerProcessing(env, {
     phrase_id: id,
     source_type: 'text',  // Treat as text since we just need TTS
@@ -151,6 +155,7 @@ export async function handleRegenerateAudio(
     source_text: phrase.source_text,
     language: phrase.detected_language,
     webhook_url: '',
+    job_id: jobId,
   }, requestUrl);
   
   return Response.json({ message: 'Audio regeneration triggered' });
@@ -168,7 +173,8 @@ export async function handleRetryPhrase(
     return Response.json({ error: 'Phrase not found' }, { status: 404 });
   }
   const requestUrl = new URL(request.url);
-  await beginProcessingForUser(env, userId, id);
+  const jobId = crypto.randomUUID();
+  await setCurrentJobForUser(env, userId, id, jobId, true);
   await triggerProcessing(env, {
     phrase_id: id,
     source_type: phrase.source_type,
@@ -176,6 +182,7 @@ export async function handleRetryPhrase(
     source_text: phrase.source_text,
     language: phrase.detected_language,
     webhook_url: '',
+    job_id: jobId,
   }, requestUrl);
   return Response.json({ message: 'Retry queued', status: 'processing' });
 }

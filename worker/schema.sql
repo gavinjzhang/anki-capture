@@ -27,3 +27,6 @@ CREATE INDEX IF NOT EXISTS idx_phrases_status ON phrases(status);
 CREATE INDEX IF NOT EXISTS idx_phrases_created ON phrases(created_at);
 CREATE INDEX IF NOT EXISTS idx_phrases_export ON phrases(status, exclude_from_export);
 CREATE INDEX IF NOT EXISTS idx_phrases_user ON phrases(user_id);
+
+-- Idempotency
+ALTER TABLE phrases ADD COLUMN current_job_id TEXT;

@@ -31,6 +31,12 @@ export async function handleModalWebhook(
     return Response.json({ error: 'Phrase not found' }, { status: 404 });
   }
   
+  // Idempotency: ignore stale/duplicate webhooks if job_id doesn't match current
+  if (phrase.current_job_id && payload.job_id && payload.job_id !== phrase.current_job_id) {
+    console.warn('Ignoring stale webhook', { phrase_id: payload.phrase_id, job_id: payload.job_id, current_job_id: phrase.current_job_id });
+    return Response.json({ received: true, ignored: true });
+  }
+
   if (payload.success && payload.result) {
     try {
       // If audio data was included (base64), save it to R2

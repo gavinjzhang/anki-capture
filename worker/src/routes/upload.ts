@@ -1,5 +1,5 @@
 import { Env, SourceType, Language } from '../types';
-import { createPhrase } from '../lib/db';
+import { createPhrase, setCurrentJobForUser } from '../lib/db';
 import { uploadFile, generateFileKey, getExtensionFromContentType } from '../lib/r2';
 import { getUserId } from '../lib/auth';
 import { triggerProcessing, buildFileUrl } from '../lib/modal';
@@ -54,6 +54,8 @@ export async function handleFileUpload(
   
   // Trigger Modal processing
   const requestUrl = new URL(request.url);
+  const jobId = crypto.randomUUID();
+  await setCurrentJobForUser(env, userId, phraseId, jobId, true);
   await triggerProcessing(env, {
     phrase_id: phraseId,
     source_type: sourceType,
@@ -61,6 +63,7 @@ export async function handleFileUpload(
     source_text: null,
     language: null,
     webhook_url: '', // Will be set in triggerProcessing
+    job_id: jobId,
   }, requestUrl);
   
   return Response.json({
@@ -95,6 +98,8 @@ export async function handleTextUpload(
   
   // Trigger Modal processing (no file, just text)
   const requestUrl = new URL(request.url);
+  const jobId = crypto.randomUUID();
+  await setCurrentJobForUser(env, userId, phraseId, jobId, true);
   await triggerProcessing(env, {
     phrase_id: phraseId,
     source_type: 'text',
@@ -102,6 +107,7 @@ export async function handleTextUpload(
     source_text: body.text.trim(),
     language: body.language,
     webhook_url: '',
+    job_id: jobId,
   }, requestUrl);
   
   return Response.json({
