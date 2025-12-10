@@ -8,6 +8,9 @@
     "db:init": "wrangler d1 execute anki-capture --file=./schema.sql",
     "db:init:local": "wrangler d1 execute anki-capture --local --file=./schema.sql"
   },
+  "dependencies": {
+    "jose": "^5.2.4"
+  },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240117.0",
     "typescript": "^5.3.3",
