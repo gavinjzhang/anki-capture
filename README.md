@@ -96,7 +96,6 @@ Worker
 1) Set environment variables in `wrangler.toml` or via dashboard:
    - `CLERK_JWT_ISSUER="https://your-app.clerk.accounts.dev"`
    - (optional) `CLERK_JWKS_URL` if you use a custom JWKS location
-   - (optional) `ADMIN_EMAILS` to restrict admin endpoints
 2) Deploy: `cd worker && npx wrangler deploy -e production`
 
 Notes
@@ -116,16 +115,16 @@ This guide assumes you previously ran single-user (no `user_id`) and want to mig
 - Protect both your Worker route and your Pages domain with Access.
 - After enabling, requests include `Cf-Access-Authenticated-User-Email` which the Worker uses as `user_id`.
 
-3) Backfill `user_id` for legacy rows
-- Decide your `user_id` convention. With Clerk we use the user `sub` (stable). Find yours in the browser via Clerk: `console.log(window.Clerk?.user?.id)` after signing in.
-- While signed in (as an admin), run in browser console:
-  `fetch('/api/admin/backfill', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ default_user_id: '<your-clerk-user-id>' })}).then(r=>r.json()).then(console.log)`
-- This sets `user_id` for any rows where it’s null.
+3) Backfill `user_id` for legacy rows (via D1)
+- Decide your `user_id` convention. With Clerk we use the user `sub` (stable). Copy your id from the Clerk Dashboard → Users.
+- Run these against production D1:
+  - `npx wrangler d1 execute anki-capture --remote --command "ALTER TABLE phrases ADD COLUMN user_id TEXT;"` (ignore error if column exists)
+  - `npx wrangler d1 execute anki-capture --remote --command "CREATE INDEX IF NOT EXISTS idx_phrases_user ON phrases(user_id);"`
+  - `npx wrangler d1 execute anki-capture --remote --command "UPDATE phrases SET user_id = '<your-clerk-user-id>' WHERE user_id IS NULL;"`
 
-4) Migrate legacy R2 keys into user namespace
-- Move existing R2 objects to `<user_id>/...` and update DB for that user:
-  `fetch('/api/admin/migrate-r2', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user_id: '<your-clerk-user-id>' })}).then(r=>r.json()).then(console.log)`
-- This copies old keys (e.g., `original/<id>.ext`, `audio/<id>.mp3`) to `<user_id>/original/<id>.ext` and `<user_id>/audio/<id>.mp3`, updates DB, then deletes old keys.
+4) Legacy R2 keys (optional)
+- The Worker temporarily allows fetching legacy keys (`original/...`, `audio/...`) even when authenticated, so you can skip immediate R2 migration.
+- New uploads will be saved under `<user_id>/original/...` and `<user_id>/audio/...`.
 
 5) Verify
 - Open Library/Review; audio and originals should load under your namespace.

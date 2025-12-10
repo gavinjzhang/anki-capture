@@ -11,7 +11,6 @@ import {
 import { handleExport, handleExportComplete, handleExportPreview } from './routes/export';
 import { handleModalWebhook } from './routes/webhook';
 import { handleGetFile } from './routes/files';
-import { handleBackfillUsers, handleMigrateR2 } from './routes/admin';
 
 // Simple router
 type Handler = (request: Request, env: Env, ...args: string[]) => Promise<Response>;
@@ -46,9 +45,6 @@ const routes: Route[] = [
   // Files
   { method: 'GET', pattern: /^\/api\/files\/(.+)$/, handler: handleGetFile },
 
-  // Admin (behind Access)
-  { method: 'POST', pattern: /^\/api\/admin\/backfill$/, handler: handleBackfillUsers },
-  { method: 'POST', pattern: /^\/api\/admin\/migrate-r2$/, handler: handleMigrateR2 },
 ];
 
 function corsHeaders(): HeadersInit {

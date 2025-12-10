@@ -16,7 +16,8 @@ export async function handleGetFile(
   const callerEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
   if (hasBearer || callerEmail) {
     const userId = await getUserId(request, env);
-    if (!decodedKey.startsWith(`${userId}/`)) {
+    const isLegacy = decodedKey.startsWith('original/') || decodedKey.startsWith('audio/');
+    if (!isLegacy && !decodedKey.startsWith(`${userId}/`)) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
   }
