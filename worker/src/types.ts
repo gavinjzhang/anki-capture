@@ -5,6 +5,7 @@ export interface Env {
   ENVIRONMENT: string;
   CLERK_JWT_ISSUER?: string;
   CLERK_JWKS_URL?: string; // optional override for JWKS
+  MAX_UPLOAD_MB?: string; // optional, default 20
 }
 
 export type SourceType = 'image' | 'audio' | 'text';

@@ -26,6 +26,13 @@ export async function handleFileUpload(
   if (!file) {
     return Response.json({ error: 'No file provided' }, { status: 400 });
   }
+
+  // Enforce size limits (default 20MB, overridable via env)
+  const maxMb = parseInt(env.MAX_UPLOAD_MB || '20', 10);
+  const maxBytes = maxMb * 1024 * 1024;
+  if (file.size > maxBytes) {
+    return Response.json({ error: `File too large. Max ${maxMb}MB` }, { status: 413 });
+  }
   
   const sourceType = detectSourceType(file.type);
   if (!sourceType) {

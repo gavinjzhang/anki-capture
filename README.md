@@ -302,3 +302,8 @@ See [Edge TTS voices](https://github.com/rany2/edge-tts) for full list.
 ## License
 
 MIT
+### Upload Limits
+
+You can cap upload size in the Worker:
+
+- Set `MAX_UPLOAD_MB` in `wrangler.toml` (or dashboard). Default: 20

@@ -11,6 +11,7 @@ import {
 import { handleExport, handleExportComplete, handleExportPreview } from './routes/export';
 import { handleModalWebhook } from './routes/webhook';
 import { handleGetFile } from './routes/files';
+import { handleHealth } from './routes/health';
 
 // Simple router
 type Handler = (request: Request, env: Env, ...args: string[]) => Promise<Response>;
@@ -44,6 +45,9 @@ const routes: Route[] = [
   
   // Files
   { method: 'GET', pattern: /^\/api\/files\/(.+)$/, handler: handleGetFile },
+
+  // Health
+  { method: 'GET', pattern: /^\/api\/health$/, handler: handleHealth },
 
 ];
 
