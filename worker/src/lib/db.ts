@@ -8,6 +8,7 @@ function rowToPhrase(row: PhraseRow): Phrase {
     source_type: row.source_type as Phrase['source_type'],
     status: row.status as PhraseStatus,
     exclude_from_export: Boolean(row.exclude_from_export),
+    job_attempts: row.job_attempts ?? 0,
   };
 }
 
@@ -21,9 +22,12 @@ export async function createPhrase(
   language: string | null = null
 ): Promise<void> {
   await env.DB.prepare(`
-    INSERT INTO phrases (id, user_id, source_type, original_file_url, source_text, detected_language, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, 'processing', ?)
-  `).bind(id, userId, sourceType, originalFileUrl, sourceText, language, Date.now()).run();
+    INSERT INTO phrases (
+      id, user_id, source_type, original_file_url, source_text, detected_language,
+      status, created_at, job_started_at, job_attempts
+    )
+    VALUES (?, ?, ?, ?, ?, ?, 'processing', ?, ?, 1)
+  `).bind(id, userId, sourceType, originalFileUrl, sourceText, language, Date.now(), Date.now()).run();
 }
 
 export async function getPhrase(env: Env, id: string): Promise<Phrase | null> {
@@ -122,6 +126,7 @@ export async function updatePhraseFromProcessing(
       detected_language = ?,
       language_confidence = ?,
       audio_url = ?,
+      last_error = NULL,
       status = 'pending_review'
     WHERE id = ?
   `).bind(
@@ -189,6 +194,18 @@ export async function updatePhrase(
     setClauses.push('exported_at = ?');
     values.push(updates.exported_at);
   }
+  if (updates.job_started_at !== undefined) {
+    setClauses.push('job_started_at = ?');
+    values.push(updates.job_started_at);
+  }
+  if (updates.job_attempts !== undefined) {
+    setClauses.push('job_attempts = ?');
+    values.push(updates.job_attempts);
+  }
+  if (updates.last_error !== undefined) {
+    setClauses.push('last_error = ?');
+    values.push(updates.last_error);
+  }
   
   if (setClauses.length === 0) return;
   
@@ -220,9 +237,35 @@ export async function updatePhraseForUser(
   }
   if (updates.exclude_from_export !== undefined) { setClauses.push('exclude_from_export = ?'); values.push(updates.exclude_from_export ? 1 : 0); }
   if (updates.exported_at !== undefined) { setClauses.push('exported_at = ?'); values.push(updates.exported_at); }
+  if (updates.job_started_at !== undefined) { setClauses.push('job_started_at = ?'); values.push(updates.job_started_at); }
+  if (updates.job_attempts !== undefined) { setClauses.push('job_attempts = ?'); values.push(updates.job_attempts); }
+  if (updates.last_error !== undefined) { setClauses.push('last_error = ?'); values.push(updates.last_error); }
   if (setClauses.length === 0) return;
   values.push(id, userId);
   await env.DB.prepare(`UPDATE phrases SET ${setClauses.join(', ')} WHERE id = ? AND (user_id = ? OR user_id IS NULL)`).bind(...values).run();
+}
+
+export async function beginProcessingForUser(env: Env, userId: string, id: string): Promise<void> {
+  await env.DB.prepare(`
+    UPDATE phrases SET status = 'processing', job_started_at = ?, job_attempts = COALESCE(job_attempts,0) + 1, last_error = NULL
+    WHERE id = ? AND (user_id = ? OR user_id IS NULL)
+  `).bind(Date.now(), id, userId).run();
+}
+
+export async function sweepProcessingTimeouts(env: Env, timeoutMs: number): Promise<number> {
+  const cutoff = Date.now() - timeoutMs;
+  // Move stuck processing to pending_review with timeout note; keep existing notes
+  const stmt = env.DB.prepare(`
+    UPDATE phrases SET 
+      status = 'pending_review', 
+      grammar_notes = COALESCE(grammar_notes || '\n', '') || '' || '⚠️ Timed out after processing',
+      last_error = 'Timed out'
+    WHERE status = 'processing' 
+      AND COALESCE(job_started_at, created_at) < ?
+  `).bind(cutoff);
+  await stmt.run();
+  // D1 doesn't return changes count via this API; return -1 as unknown
+  return -1;
 }
 
 export async function markPhrasesExported(env: Env, ids: string[]): Promise<void> {

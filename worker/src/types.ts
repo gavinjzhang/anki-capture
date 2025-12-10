@@ -36,6 +36,9 @@ export interface Phrase {
   original_file_url: string | null;
   status: PhraseStatus;
   exclude_from_export: boolean;
+  job_started_at: number | null;
+  job_attempts: number;
+  last_error: string | null;
   created_at: number;
   reviewed_at: number | null;
   exported_at: number | null;
@@ -56,6 +59,9 @@ export interface PhraseRow {
   original_file_url: string | null;
   status: string;
   exclude_from_export: number;
+  job_started_at: number | null;
+  job_attempts: number | null;
+  last_error: string | null;
   created_at: number;
   reviewed_at: number | null;
   exported_at: number | null;

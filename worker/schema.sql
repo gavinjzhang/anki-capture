@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS phrases (
   original_file_url TEXT,      -- R2 path to original upload (null for text input)
   status TEXT DEFAULT 'processing',  -- processing | pending_review | approved | exported
   exclude_from_export INTEGER DEFAULT 0,
+  job_started_at INTEGER,
+  job_attempts INTEGER DEFAULT 0,
+  last_error TEXT,
   created_at INTEGER,
   reviewed_at INTEGER,
   exported_at INTEGER

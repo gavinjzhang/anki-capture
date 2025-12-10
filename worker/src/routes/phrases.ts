@@ -9,6 +9,7 @@ import {
 import { deleteFile } from '../lib/r2';
 import { triggerProcessing, buildFileUrl } from '../lib/modal';
 import { getUserId } from '../lib/auth';
+import { beginProcessingForUser } from '../lib/db';
 
 // GET /api/phrases
 export async function handleListPhrases(
@@ -68,10 +69,8 @@ export async function handleUpdatePhrase(
   if (body.detected_language && body.detected_language !== phrase.detected_language) {
     const requestUrl = new URL(request.url);
     
-    await updatePhraseForUser(env, userId, id, { 
-      status: 'processing',
-      detected_language: body.detected_language 
-    });
+    await updatePhraseForUser(env, userId, id, { detected_language: body.detected_language });
+    await beginProcessingForUser(env, userId, id);
     
     await triggerProcessing(env, {
       phrase_id: id,
@@ -155,6 +154,30 @@ export async function handleRegenerateAudio(
   }, requestUrl);
   
   return Response.json({ message: 'Audio regeneration triggered' });
+}
+
+// POST /api/phrases/:id/retry
+export async function handleRetryPhrase(
+  request: Request,
+  env: Env,
+  id: string
+): Promise<Response> {
+  const userId = await getUserId(request, env);
+  const phrase = await getPhraseForUser(env, userId, id);
+  if (!phrase) {
+    return Response.json({ error: 'Phrase not found' }, { status: 404 });
+  }
+  const requestUrl = new URL(request.url);
+  await beginProcessingForUser(env, userId, id);
+  await triggerProcessing(env, {
+    phrase_id: id,
+    source_type: phrase.source_type,
+    file_url: phrase.original_file_url ? buildFileUrl(requestUrl, phrase.original_file_url) : null,
+    source_text: phrase.source_text,
+    language: phrase.detected_language,
+    webhook_url: '',
+  }, requestUrl);
+  return Response.json({ message: 'Retry queued', status: 'processing' });
 }
 
 // DELETE /api/phrases/:id

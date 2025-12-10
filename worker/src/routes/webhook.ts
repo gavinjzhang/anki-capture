@@ -78,6 +78,7 @@ export async function handleModalWebhook(
     await updatePhrase(env, payload.phrase_id, { 
       status: 'pending_review',
       grammar_notes: `⚠️ Processing error: ${payload.error}`,
+      last_error: payload.error || 'Processing failed',
     });
   }
   

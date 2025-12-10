@@ -6,12 +6,14 @@ import {
   handleUpdatePhrase,
   handleApprovePhrase,
   handleRegenerateAudio,
-  handleDeletePhrase 
+  handleDeletePhrase,
+  handleRetryPhrase
 } from './routes/phrases';
 import { handleExport, handleExportComplete, handleExportPreview } from './routes/export';
 import { handleModalWebhook } from './routes/webhook';
 import { handleGetFile } from './routes/files';
 import { handleHealth } from './routes/health';
+import { sweepProcessingTimeouts } from './lib/db';
 
 // Simple router
 type Handler = (request: Request, env: Env, ...args: string[]) => Promise<Response>;
@@ -34,6 +36,7 @@ const routes: Route[] = [
   { method: 'DELETE', pattern: /^\/api\/phrases\/([^/]+)$/, handler: handleDeletePhrase },
   { method: 'POST', pattern: /^\/api\/phrases\/([^/]+)\/approve$/, handler: handleApprovePhrase },
   { method: 'POST', pattern: /^\/api\/phrases\/([^/]+)\/regenerate-audio$/, handler: handleRegenerateAudio },
+  { method: 'POST', pattern: /^\/api\/phrases\/([^/]+)\/retry$/, handler: handleRetryPhrase },
   
   // Export
   { method: 'GET', pattern: /^\/api\/export$/, handler: handleExport },
@@ -101,4 +104,12 @@ export default {
       { status: 404, headers: corsHeaders() }
     );
   },
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    try {
+      // Mark jobs stuck in processing for >20 minutes as pending_review
+      await sweepProcessingTimeouts(env, 20 * 60 * 1000);
+    } catch (err) {
+      console.error('Scheduled sweep failed', err);
+    }
+  }
 };

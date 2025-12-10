@@ -73,6 +73,10 @@ npm run db:init
 # Deploy worker
 npm run deploy
 
+### Scheduled sweeps (timeouts)
+
+The Worker includes a cron that runs every 15 minutes to move stuck jobs from `processing` to `pending_review` and record a timeout error. The schedule is defined in `wrangler.toml` under `[triggers] crons`.
+
 ## Auth: Clerk (recommended)
 Adds multi-user accounts with hosted auth UI. The frontend sends a Clerk JWT; the Worker verifies it and scopes all data by `user_id` (Clerk user `sub`). R2 keys are namespaced by `user_id`.
 

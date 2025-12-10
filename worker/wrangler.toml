@@ -37,3 +37,6 @@ database_id = "36d8f48b-cbee-478f-831e-5828aaff9e28"
 [[env.production.r2_buckets]]
 binding = "BUCKET"
 bucket_name = "anki-capture-files"
+
+[triggers]
+crons = ["*/15 * * * *"]
