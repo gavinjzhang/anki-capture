@@ -72,6 +72,19 @@ npm run db:init
 
 # Deploy worker
 npm run deploy
+
+## Optional: Protect with Cloudflare Access (multi-user)
+To enable multi-user isolation, put the Worker and Pages behind Cloudflare Access. The Worker will derive a user ID from the `Cf-Access-Authenticated-User-Email` header and scope all data to that user. R2 object keys are namespaced by user.
+
+Steps:
+
+1) Create an Access application for your Worker route and Pages domain.
+2) Add an Access policy (One-time PIN, Google, GitHub, etc.).
+3) No code changes required; the Worker reads the Access header automatically.
+
+Notes:
+- For local development, you can simulate users by sending `x-user: alice@example.com` or rely on a default `dev@local` user.
+- The `/api/webhook/modal` and file fetches used by Modal are not Access-protected; if you want to lock down `/api/files`, switch to signed URLs.
 ```
 
 ### 2. Modal Setup

@@ -28,8 +28,9 @@ export async function deleteFile(env: Env, key: string): Promise<void> {
   await env.BUCKET.delete(key);
 }
 
-export function generateFileKey(phraseId: string, type: 'original' | 'audio', ext: string): string {
-  return `${type}/${phraseId}.${ext}`;
+export function generateFileKey(userId: string, phraseId: string, type: 'original' | 'audio', ext: string): string {
+  // Namespace by user to isolate data across users
+  return `${userId}/${type}/${phraseId}.${ext}`;
 }
 
 export function getExtensionFromContentType(contentType: string): string {

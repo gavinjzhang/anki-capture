@@ -1,18 +1,26 @@
 import { Env, PhraseStatus, Phrase, VocabItem } from '../types';
-import { getPhrase, listPhrases, updatePhrase, deletePhrase } from '../lib/db';
+import { 
+  getPhraseForUser, 
+  listPhrasesForUser, 
+  updatePhraseForUser, 
+  deletePhraseForUser, 
+  getPhrase 
+} from '../lib/db';
 import { deleteFile } from '../lib/r2';
 import { triggerProcessing, buildFileUrl } from '../lib/modal';
+import { getUserId } from '../lib/auth';
 
 // GET /api/phrases
 export async function handleListPhrases(
   request: Request,
   env: Env
 ): Promise<Response> {
+  const userId = getUserId(request, env);
   const url = new URL(request.url);
   const status = url.searchParams.get('status') as PhraseStatus | null;
   const limit = parseInt(url.searchParams.get('limit') || '100', 10);
   
-  const phrases = await listPhrases(env, status || undefined, limit);
+  const phrases = await listPhrasesForUser(env, userId, status || undefined, limit);
   return Response.json({ phrases });
 }
 
@@ -22,7 +30,8 @@ export async function handleGetPhrase(
   env: Env,
   id: string
 ): Promise<Response> {
-  const phrase = await getPhrase(env, id);
+  const userId = getUserId(request, env);
+  const phrase = await getPhraseForUser(env, userId, id);
   
   if (!phrase) {
     return Response.json({ error: 'Phrase not found' }, { status: 404 });
@@ -37,7 +46,8 @@ export async function handleUpdatePhrase(
   env: Env,
   id: string
 ): Promise<Response> {
-  const phrase = await getPhrase(env, id);
+  const userId = getUserId(request, env);
+  const phrase = await getPhraseForUser(env, userId, id);
   
   if (!phrase) {
     return Response.json({ error: 'Phrase not found' }, { status: 404 });
@@ -58,7 +68,7 @@ export async function handleUpdatePhrase(
   if (body.detected_language && body.detected_language !== phrase.detected_language) {
     const requestUrl = new URL(request.url);
     
-    await updatePhrase(env, id, { 
+    await updatePhraseForUser(env, userId, id, { 
       status: 'processing',
       detected_language: body.detected_language 
     });
@@ -80,9 +90,9 @@ export async function handleUpdatePhrase(
     });
   }
   
-  await updatePhrase(env, id, body);
+  await updatePhraseForUser(env, userId, id, body);
   
-  const updated = await getPhrase(env, id);
+  const updated = await getPhraseForUser(env, userId, id);
   return Response.json({ phrase: updated });
 }
 
@@ -92,7 +102,8 @@ export async function handleApprovePhrase(
   env: Env,
   id: string
 ): Promise<Response> {
-  const phrase = await getPhrase(env, id);
+  const userId = getUserId(request, env);
+  const phrase = await getPhraseForUser(env, userId, id);
   
   if (!phrase) {
     return Response.json({ error: 'Phrase not found' }, { status: 404 });
@@ -105,7 +116,7 @@ export async function handleApprovePhrase(
     );
   }
   
-  await updatePhrase(env, id, { status: 'approved' });
+  await updatePhraseForUser(env, userId, id, { status: 'approved' });
   
   return Response.json({ message: 'Phrase approved' });
 }
@@ -116,7 +127,8 @@ export async function handleRegenerateAudio(
   env: Env,
   id: string
 ): Promise<Response> {
-  const phrase = await getPhrase(env, id);
+  const userId = getUserId(request, env);
+  const phrase = await getPhraseForUser(env, userId, id);
   
   if (!phrase) {
     return Response.json({ error: 'Phrase not found' }, { status: 404 });
@@ -151,7 +163,8 @@ export async function handleDeletePhrase(
   env: Env,
   id: string
 ): Promise<Response> {
-  const phrase = await getPhrase(env, id);
+  const userId = getUserId(request, env);
+  const phrase = await getPhraseForUser(env, userId, id);
   
   if (!phrase) {
     return Response.json({ error: 'Phrase not found' }, { status: 404 });
@@ -163,7 +176,7 @@ export async function handleDeletePhrase(
   if (phrase.audio_url) keysToDelete.push(phrase.audio_url);
 
   // Delete DB record first; do not block on storage cleanup
-  await deletePhrase(env, id);
+  await deletePhraseForUser(env, userId, id);
 
   // Best-effort deletion of associated R2 objects
   await Promise.allSettled(

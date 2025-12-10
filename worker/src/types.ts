@@ -20,6 +20,7 @@ export interface VocabItem {
 
 export interface Phrase {
   id: string;
+  // user_id is stored in DB but not exposed to clients
   source_text: string | null;
   transliteration: string | null;
   translation: string | null;
@@ -39,6 +40,7 @@ export interface Phrase {
 
 export interface PhraseRow {
   id: string;
+  user_id: string | null;
   source_text: string | null;
   transliteration: string | null;
   translation: string | null;

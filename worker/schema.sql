@@ -2,6 +2,7 @@
 
 CREATE TABLE IF NOT EXISTS phrases (
   id TEXT PRIMARY KEY,
+  user_id TEXT,               -- Owner (from Access email or subject)
   source_text TEXT,
   transliteration TEXT,
   translation TEXT,
@@ -22,3 +23,4 @@ CREATE TABLE IF NOT EXISTS phrases (
 CREATE INDEX IF NOT EXISTS idx_phrases_status ON phrases(status);
 CREATE INDEX IF NOT EXISTS idx_phrases_created ON phrases(created_at);
 CREATE INDEX IF NOT EXISTS idx_phrases_export ON phrases(status, exclude_from_export);
+CREATE INDEX IF NOT EXISTS idx_phrases_user ON phrases(user_id);

@@ -41,7 +41,14 @@ export async function handleModalWebhook(
           atob(payload.result.audio_data), 
           c => c.charCodeAt(0)
         );
-        const audioKey = generateFileKey(payload.phrase_id, 'audio', 'mp3');
+        // We don't know the user here; look up phrase to get its original file key and derive the user prefix.
+        let userPrefix = 'anonymous';
+        if (phrase.original_file_url) {
+          const parts = phrase.original_file_url.split('/');
+          // userId is the first segment of the key: <userId>/type/id.ext
+          if (parts.length > 0) userPrefix = parts[0];
+        }
+        const audioKey = generateFileKey(userPrefix, payload.phrase_id, 'audio', 'mp3');
         await uploadFile(env, audioKey, audioBuffer.buffer, 'audio/mpeg');
         audioUrl = audioKey;
       }

@@ -1,6 +1,7 @@
 import { Env, SourceType, Language } from '../types';
 import { createPhrase } from '../lib/db';
 import { uploadFile, generateFileKey, getExtensionFromContentType } from '../lib/r2';
+import { getUserId } from '../lib/auth';
 import { triggerProcessing, buildFileUrl } from '../lib/modal';
 
 function generateId(): string {
@@ -18,6 +19,7 @@ export async function handleFileUpload(
   request: Request,
   env: Env
 ): Promise<Response> {
+  const userId = getUserId(request, env)
   const formData = await request.formData();
   const file = formData.get('file') as File | null;
   
@@ -35,13 +37,13 @@ export async function handleFileUpload(
   
   const phraseId = generateId();
   const ext = getExtensionFromContentType(file.type);
-  const fileKey = generateFileKey(phraseId, 'original', ext);
+  const fileKey = generateFileKey(userId, phraseId, 'original', ext);
   
   // Upload to R2
   await uploadFile(env, fileKey, await file.arrayBuffer(), file.type);
   
   // Create DB record
-  await createPhrase(env, phraseId, sourceType, fileKey);
+  await createPhrase(env, userId, phraseId, sourceType, fileKey);
   
   // Trigger Modal processing
   const requestUrl = new URL(request.url);
@@ -65,6 +67,7 @@ export async function handleTextUpload(
   request: Request,
   env: Env
 ): Promise<Response> {
+  const userId = getUserId(request, env)
   const body = await request.json() as { text?: string; language?: Language };
   
   if (!body.text?.trim()) {
@@ -81,7 +84,7 @@ export async function handleTextUpload(
   const phraseId = generateId();
   
   // Create DB record with text already set
-  await createPhrase(env, phraseId, 'text', null, body.text.trim(), body.language);
+  await createPhrase(env, userId, phraseId, 'text', null, body.text.trim(), body.language);
   
   // Trigger Modal processing (no file, just text)
   const requestUrl = new URL(request.url);

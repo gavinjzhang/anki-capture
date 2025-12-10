@@ -1,6 +1,7 @@
 import { Env, Phrase, VocabItem } from '../types';
-import { getExportablePhrases, markPhrasesExported } from '../lib/db';
+import { getExportablePhrasesForUser, markPhrasesExportedForUser } from '../lib/db';
 import { getFile } from '../lib/r2';
+import { getUserId } from '../lib/auth';
 
 function formatVocabBreakdown(vocab: VocabItem[] | null): string {
   if (!vocab || vocab.length === 0) return '';
@@ -36,7 +37,8 @@ export async function handleExport(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const phrases = await getExportablePhrases(env);
+  const userId = getUserId(request, env);
+  const phrases = await getExportablePhrasesForUser(env, userId);
   
   if (phrases.length === 0) {
     return Response.json(
@@ -68,12 +70,13 @@ export async function handleExportComplete(
   env: Env
 ): Promise<Response> {
   const body = await request.json() as { phrase_ids: string[] };
+  const userId = getUserId(request, env);
   
   if (!body.phrase_ids?.length) {
     return Response.json({ error: 'No phrase IDs provided' }, { status: 400 });
   }
   
-  await markPhrasesExported(env, body.phrase_ids);
+  await markPhrasesExportedForUser(env, userId, body.phrase_ids);
   
   return Response.json({ 
     message: `Marked ${body.phrase_ids.length} phrases as exported` 
@@ -86,7 +89,8 @@ export async function handleExportPreview(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const phrases = await getExportablePhrases(env);
+  const userId = getUserId(request, env);
+  const phrases = await getExportablePhrasesForUser(env, userId);
   
   return Response.json({
     count: phrases.length,
