@@ -37,7 +37,7 @@ export async function handleExport(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const userId = getUserId(request, env);
+  const userId = await getUserId(request, env);
   const phrases = await getExportablePhrasesForUser(env, userId);
   
   if (phrases.length === 0) {
@@ -70,7 +70,7 @@ export async function handleExportComplete(
   env: Env
 ): Promise<Response> {
   const body = await request.json() as { phrase_ids: string[] };
-  const userId = getUserId(request, env);
+  const userId = await getUserId(request, env);
   
   if (!body.phrase_ids?.length) {
     return Response.json({ error: 'No phrase IDs provided' }, { status: 400 });
@@ -89,7 +89,7 @@ export async function handleExportPreview(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const userId = getUserId(request, env);
+  const userId = await getUserId(request, env);
   const phrases = await getExportablePhrasesForUser(env, userId);
   
   return Response.json({

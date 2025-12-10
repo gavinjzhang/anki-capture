@@ -19,7 +19,7 @@ export async function handleFileUpload(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const userId = getUserId(request, env)
+  const userId = await getUserId(request, env)
   const formData = await request.formData();
   const file = formData.get('file') as File | null;
   
@@ -67,7 +67,7 @@ export async function handleTextUpload(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const userId = getUserId(request, env)
+  const userId = await getUserId(request, env)
   const body = await request.json() as { text?: string; language?: Language };
   
   if (!body.text?.trim()) {

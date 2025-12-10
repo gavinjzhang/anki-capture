@@ -9,12 +9,13 @@ export async function handleGetFile(
   key: string
 ): Promise<Response> {
   const decodedKey = decodeURIComponent(key);
-  // If the request is authenticated (Access), ensure the caller can only fetch
+  // If the request is authenticated (Clerk or Access), ensure the caller can only fetch
   // files under their own user namespace. Allow unauthenticated access to
   // support Modal jobs fetching originals/audio.
+  const hasBearer = request.headers.get('Authorization')?.startsWith('Bearer ');
   const callerEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
-  if (callerEmail) {
-    const userId = getUserId(request, env);
+  if (hasBearer || callerEmail) {
+    const userId = await getUserId(request, env);
     if (!decodedKey.startsWith(`${userId}/`)) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }

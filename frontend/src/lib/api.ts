@@ -1,6 +1,7 @@
 // API base override: set VITE_API_BASE to point at a deployed Worker
 // Example: VITE_API_BASE=https://anki-capture-api.<account>.workers.dev
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
+import { getAuthToken } from './auth'
 
 export interface VocabItem {
   word: string;
@@ -31,10 +32,12 @@ export interface Phrase {
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = await getAuthToken()
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
-      ...options?.headers,
+      ...(options?.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
   

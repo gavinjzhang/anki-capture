@@ -73,20 +73,38 @@ npm run db:init
 # Deploy worker
 npm run deploy
 
-## Optional: Protect with Cloudflare Access (multi-user)
-To enable multi-user isolation, put the Worker and Pages behind Cloudflare Access. The Worker will derive a user ID from the `Cf-Access-Authenticated-User-Email` header and scope all data to that user. R2 object keys are namespaced by user.
+## Auth: Clerk (recommended)
+Adds multi-user accounts with hosted auth UI. The frontend sends a Clerk JWT; the Worker verifies it and scopes all data by `user_id` (Clerk user `sub`). R2 keys are namespaced by `user_id`.
 
-Steps:
+Setup
 
-1) Create an Access application for your Worker route and Pages domain.
-2) Add an Access policy (One-time PIN, Google, GitHub, etc.).
-3) No code changes required; the Worker reads the Access header automatically.
+- Create a Clerk application at clerk.com
+- Get keys and issuer:
+  - Publishable Key (frontend) → `VITE_CLERK_PUBLISHABLE_KEY`
+  - Secret Key (backend) → not required here; we verify via JWKS
+  - JWT Issuer URL → `CLERK_JWT_ISSUER` (e.g., `https://your-app.clerk.accounts.dev`)
 
-Notes:
-- For local development, you can simulate users by sending `x-user: alice@example.com` or rely on a default `dev@local` user.
-- The `/api/webhook/modal` and file fetches used by Modal are not Access-protected; if you want to lock down `/api/files`, switch to signed URLs.
+Frontend
 
-### Multi-user Deployment Guide (with Backfill)
+1) Configure env in Pages or `.env.local`:
+   - `VITE_CLERK_PUBLISHABLE_KEY=pk_test_...`
+   - `VITE_API_BASE=https://anki-capture-api.<account>.workers.dev` (or leave empty to same-origin)
+2) App is already wrapped in `ClerkProvider`, with SignIn and User buttons in the navbar. Tokens are sent automatically on API requests.
+
+Worker
+
+1) Set environment variables in `wrangler.toml` or via dashboard:
+   - `CLERK_JWT_ISSUER="https://your-app.clerk.accounts.dev"`
+   - (optional) `CLERK_JWKS_URL` if you use a custom JWKS location
+   - (optional) `ADMIN_EMAILS` to restrict admin endpoints
+2) Deploy: `cd worker && npx wrangler deploy -e production`
+
+Notes
+
+- Webhook `/api/webhook/modal` and unauthenticated asset fetches by Modal remain open. To fully lock down `/api/files`, switch to signed URLs.
+- For local dev without Clerk, the app falls back to `x-user` header or `dev@local`.
+
+### Multi-user Deployment Guide (Backfill + Migration)
 
 This guide assumes you previously ran single-user (no `user_id`) and want to migrate.
 
@@ -99,16 +117,15 @@ This guide assumes you previously ran single-user (no `user_id`) and want to mig
 - After enabling, requests include `Cf-Access-Authenticated-User-Email` which the Worker uses as `user_id`.
 
 3) Backfill `user_id` for legacy rows
-- While signed in via Access (as an admin), call:
-  - Using browser console on your Pages site (devtools → Console):
-    `fetch('/api/admin/backfill', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ default_user_id: 'you@example.com' })}).then(r=>r.json()).then(console.log)`
-- This sets `user_id = 'you@example.com'` for any rows where it’s null.
+- Decide your `user_id` convention. With Clerk we use the user `sub` (stable). Find yours in the browser via Clerk: `console.log(window.Clerk?.user?.id)` after signing in.
+- While signed in (as an admin), run in browser console:
+  `fetch('/api/admin/backfill', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ default_user_id: '<your-clerk-user-id>' })}).then(r=>r.json()).then(console.log)`
+- This sets `user_id` for any rows where it’s null.
 
 4) Migrate legacy R2 keys into user namespace
-- For the same user, move existing R2 objects to `<user_id>/...` and update DB:
-  - In browser console:
-    `fetch('/api/admin/migrate-r2', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user_id: 'you@example.com' })}).then(r=>r.json()).then(console.log)`
-- This copies old keys (e.g., `original/<id>.ext`, `audio/<id>.mp3`) to `you@example.com/original/<id>.ext` and `you@example.com/audio/<id>.mp3`, updates DB, then deletes the old keys.
+- Move existing R2 objects to `<user_id>/...` and update DB for that user:
+  `fetch('/api/admin/migrate-r2', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user_id: '<your-clerk-user-id>' })}).then(r=>r.json()).then(console.log)`
+- This copies old keys (e.g., `original/<id>.ext`, `audio/<id>.mp3`) to `<user_id>/original/<id>.ext` and `<user_id>/audio/<id>.mp3`, updates DB, then deletes old keys.
 
 5) Verify
 - Open Library/Review; audio and originals should load under your namespace.

@@ -15,7 +15,7 @@ export async function handleListPhrases(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const userId = getUserId(request, env);
+  const userId = await getUserId(request, env);
   const url = new URL(request.url);
   const status = url.searchParams.get('status') as PhraseStatus | null;
   const limit = parseInt(url.searchParams.get('limit') || '100', 10);
@@ -30,7 +30,7 @@ export async function handleGetPhrase(
   env: Env,
   id: string
 ): Promise<Response> {
-  const userId = getUserId(request, env);
+  const userId = await getUserId(request, env);
   const phrase = await getPhraseForUser(env, userId, id);
   
   if (!phrase) {
@@ -46,7 +46,7 @@ export async function handleUpdatePhrase(
   env: Env,
   id: string
 ): Promise<Response> {
-  const userId = getUserId(request, env);
+  const userId = await getUserId(request, env);
   const phrase = await getPhraseForUser(env, userId, id);
   
   if (!phrase) {
@@ -102,7 +102,7 @@ export async function handleApprovePhrase(
   env: Env,
   id: string
 ): Promise<Response> {
-  const userId = getUserId(request, env);
+  const userId = await getUserId(request, env);
   const phrase = await getPhraseForUser(env, userId, id);
   
   if (!phrase) {

@@ -1,12 +1,29 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
+import { ClerkProvider, SignedIn, SignedOut, SignInButton, UserButton, useAuth } from '@clerk/clerk-react'
+import { setAuthTokenProvider } from './lib/auth'
 import UploadPage from './pages/Upload'
 import ReviewPage from './pages/Review'
 import LibraryPage from './pages/Library'
 import ExportPage from './pages/Export'
 import ProcessingStatus from './components/ProcessingStatus'
 import './index.css'
+
+function AuthWire() {
+  const { getToken, isSignedIn } = useAuth()
+  React.useEffect(() => {
+    setAuthTokenProvider(async () => {
+      if (!isSignedIn) return null
+      try {
+        return await getToken()
+      } catch {
+        return null
+      }
+    })
+  }, [getToken, isSignedIn])
+  return null
+}
 
 function App() {
   return (
@@ -20,7 +37,7 @@ function App() {
                 <span className="text-zinc-500">/</span>
                 <span>capture</span>
               </div>
-              <div className="flex gap-1">
+              <div className="flex items-center gap-2">
                 {[
                   { to: '/', label: 'Upload' },
                   { to: '/review', label: 'Review' },
@@ -41,6 +58,12 @@ function App() {
                     {label}
                   </NavLink>
                 ))}
+                <SignedIn>
+                  <UserButton afterSignOutUrl="/" />
+                </SignedIn>
+                <SignedOut>
+                  <SignInButton />
+                </SignedOut>
               </div>
             </div>
           </div>
@@ -53,6 +76,7 @@ function App() {
             <Route path="/export" element={<ExportPage />} />
           </Routes>
         </main>
+        <AuthWire />
         <ProcessingStatus />
       </div>
     </BrowserRouter>
@@ -61,6 +85,8 @@ function App() {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <ClerkProvider publishableKey={(import.meta as any).env?.VITE_CLERK_PUBLISHABLE_KEY}>
+      <App />
+    </ClerkProvider>
   </React.StrictMode>,
 )
