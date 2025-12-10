@@ -85,6 +85,37 @@ Steps:
 Notes:
 - For local development, you can simulate users by sending `x-user: alice@example.com` or rely on a default `dev@local` user.
 - The `/api/webhook/modal` and file fetches used by Modal are not Access-protected; if you want to lock down `/api/files`, switch to signed URLs.
+
+### Multi-user Deployment Guide (with Backfill)
+
+This guide assumes you previously ran single-user (no `user_id`) and want to migrate.
+
+1) Deploy updated Worker
+- `cd worker && npx wrangler deploy -e production`
+- Optionally set `ADMIN_EMAILS` (comma-separated) in Worker vars to restrict admin endpoints.
+
+2) Enable Cloudflare Access
+- Protect both your Worker route and your Pages domain with Access.
+- After enabling, requests include `Cf-Access-Authenticated-User-Email` which the Worker uses as `user_id`.
+
+3) Backfill `user_id` for legacy rows
+- While signed in via Access (as an admin), call:
+  - Using browser console on your Pages site (devtools → Console):
+    `fetch('/api/admin/backfill', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ default_user_id: 'you@example.com' })}).then(r=>r.json()).then(console.log)`
+- This sets `user_id = 'you@example.com'` for any rows where it’s null.
+
+4) Migrate legacy R2 keys into user namespace
+- For the same user, move existing R2 objects to `<user_id>/...` and update DB:
+  - In browser console:
+    `fetch('/api/admin/migrate-r2', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user_id: 'you@example.com' })}).then(r=>r.json()).then(console.log)`
+- This copies old keys (e.g., `original/<id>.ext`, `audio/<id>.mp3`) to `you@example.com/original/<id>.ext` and `you@example.com/audio/<id>.mp3`, updates DB, then deletes the old keys.
+
+5) Verify
+- Open Library/Review; audio and originals should load under your namespace.
+- New uploads will be automatically namespaced.
+
+6) Add more users
+- No extra setup needed; Access email becomes their `user_id`. Their uploads and DB rows are isolated by namespace.
 ```
 
 ### 2. Modal Setup
