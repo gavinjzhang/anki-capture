@@ -3,6 +3,7 @@ export interface Env {
   BUCKET: R2Bucket;
   MODAL_WEBHOOK_SECRET: string;
   ENVIRONMENT: string;
+  ADMIN_EMAILS?: string; // comma-separated
 }
 
 export type SourceType = 'image' | 'audio' | 'text';
