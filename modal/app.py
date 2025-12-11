@@ -140,9 +140,10 @@ def ocr_image(image_url: str) -> dict:
     detected_lang = None
     if texts[0].locale:
         lang_map = {
-            "ru": "ru", "ar": "ar", 
-            "rus": "ru", "ara": "ar",
-            "russian": "ru", "arabic": "ar"
+            "ru": "ru", "rus": "ru", "russian": "ru",
+            "ar": "ar", "ara": "ar", "arabic": "ar",
+            "zh": "zh", "zho": "zh", "chi": "zh", "chinese": "zh",
+            "es": "es", "spa": "es", "spanish": "es",
         }
         locale_lower = texts[0].locale.lower()
         detected_lang = lang_map.get(locale_lower[:2]) or lang_map.get(locale_lower)
@@ -173,7 +174,12 @@ def generate_breakdown(
     
     client = OpenAI(api_key=api_key)
     
-    lang_name = "Russian" if language == "ru" else "Arabic"
+    lang_name = {
+        "ru": "Russian",
+        "ar": "Arabic",
+        "zh": "Chinese",
+        "es": "Spanish",
+    }.get(language, language)
     
     # Language-specific prompt adjustments
     if language == "ru":
@@ -188,7 +194,7 @@ For each significant word, provide:
 
 Focus on content words. Include particles/prepositions only if they have special meaning in context.
 """
-    else:  # Arabic
+    elif language == "ar":  # Arabic
         vocab_instructions = """
 For each significant word, provide:
 - word: the word as it appears (with diacritics/harakat if helpful for pronunciation)
@@ -266,7 +272,16 @@ async def generate_tts(text: str, language: str) -> bytes:
     client = texttospeech.TextToSpeechClient(credentials=credentials)
 
     # Determine language code
-    lang_code = "ru-RU" if language == "ru" else "ar-XA"
+    if language == "ru":
+        lang_code = "ru-RU"
+    elif language == "ar":
+        lang_code = "ar-XA"
+    elif language == "zh":
+        lang_code = "zh-CN"
+    elif language == "es":
+        lang_code = "es-ES"
+    else:
+        lang_code = "en-US"
 
     # Optional overrides via secrets
     override_name = None
@@ -274,6 +289,10 @@ async def generate_tts(text: str, language: str) -> bytes:
         override_name = os.environ.get("GCP_TTS_RU_VOICE")
     elif language == "ar":
         override_name = os.environ.get("GCP_TTS_AR_VOICE")
+    elif language == "zh":
+        override_name = os.environ.get("GCP_TTS_ZH_VOICE")
+    elif language == "es":
+        override_name = os.environ.get("GCP_TTS_ES_VOICE")
 
     # List voices and filter by language
     voices = client.list_voices().voices
@@ -425,6 +444,30 @@ async def trigger(data: dict) -> dict:
     if not phrase_id:
         return {"error": "Missing phrase_id", "status": "error"}
     
+    elif language == "zh":  # Chinese
+        vocab_instructions = """
+For each significant word or phrase, provide:
+- word: the term as it appears (with characters)
+- root: pinyin with tone marks
+- meaning: English translation
+- gender: null (not applicable) 
+- declension: part of speech and classifier info if relevant
+- notes: measure words, aspect particles, classifier usage, or grammar patterns
+
+Focus on content words and key particles that affect meaning.
+"""
+    elif language == "es":  # Spanish
+        vocab_instructions = """
+For each significant word, provide:
+- word: the word as it appears
+- root: lemma (infinitive for verbs, base for nouns/adjectives)
+- meaning: English translation
+- gender: m/f for nouns (or null)
+- declension: conjugation or inflection (tense, person, number, mood) as applicable
+- notes: irregularities or important usage notes
+
+Focus on content words. Include pronouns/particles only when relevant.
+"""
     print(f"Received trigger for {phrase_id}")
     
     await process_upload.spawn.aio(

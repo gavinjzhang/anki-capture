@@ -127,6 +127,7 @@ function PhraseCard({
   onRegenerateAudio,
   regenerating,
   audioBust,
+  onDirtyChange,
 }: { 
   phrase: Phrase;
   onUpdate: (updates: Partial<Phrase>) => Promise<void>;
@@ -135,15 +136,20 @@ function PhraseCard({
   onRegenerateAudio: (text: string, language: 'ru' | 'ar' | null) => Promise<void>;
   regenerating: boolean;
   audioBust?: string;
+  onDirtyChange: (id: string, dirty: boolean) => void;
 }) {
   const [saving, setSaving] = useState(false)
   const [localPhrase, setLocalPhrase] = useState(phrase)
+  const [isDirty, setIsDirty] = useState(false)
 
+  // Do not clobber in-progress edits when polling refreshes props.
   useEffect(() => {
-    setLocalPhrase(phrase)
-  }, [phrase])
+    if (!isDirty) setLocalPhrase(phrase)
+  }, [phrase, isDirty])
 
   const handleFieldChange = (field: keyof Phrase, value: unknown) => {
+    setIsDirty(true)
+    onDirtyChange(phrase.id, true)
     setLocalPhrase(prev => ({ ...prev, [field]: value }))
   }
 
@@ -157,6 +163,8 @@ function PhraseCard({
         grammar_notes: localPhrase.grammar_notes,
         vocab_breakdown: localPhrase.vocab_breakdown,
       })
+      setIsDirty(false)
+      onDirtyChange(phrase.id, false)
     } finally {
       setSaving(false)
     }
@@ -178,7 +186,10 @@ function PhraseCard({
             {phrase.status.replace('_', ' ')}
           </span>
           <span className="text-zinc-500 text-sm">
-            {phrase.detected_language === 'ru' ? '🇷🇺' : '🇸🇦'}
+            {phrase.detected_language === 'ru' ? '🇷🇺' :
+             phrase.detected_language === 'ar' ? '🇸🇦' :
+             phrase.detected_language === 'zh' ? '🇨🇳' :
+             phrase.detected_language === 'es' ? '🇪🇸' : '🏳️'}
           </span>
           <span className="text-zinc-600 text-xs font-mono">
             {phrase.id.slice(0, 8)}
@@ -331,8 +342,11 @@ export default function ReviewPage() {
   const [approvedCount, setApprovedCount] = useState(0)
   const [regeneratingIds, setRegeneratingIds] = useState<Set<string>>(new Set())
   const [audioBust, setAudioBust] = useState<Record<string, string>>({})
+  const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set())
 
   const loadPhrases = useCallback(async () => {
+    // Pause auto-refresh while any card is being edited
+    if (dirtyIds.size > 0) return
     try {
       const { phrases } = await listPhrases('pending_review')
       setPhrases(phrases)
@@ -341,7 +355,7 @@ export default function ReviewPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [dirtyIds])
 
   useEffect(() => {
     loadPhrases()
@@ -363,6 +377,14 @@ export default function ReviewPage() {
     if (!confirm('Delete this phrase?')) return
     await deletePhrase(id)
     await loadPhrases()
+  }
+
+  const handleDirtyChange = (id: string, dirty: boolean) => {
+    setDirtyIds(prev => {
+      const next = new Set(prev)
+      if (dirty) next.add(id); else next.delete(id)
+      return next
+    })
   }
 
   const handleRegenerateAudio = async (id: string, text: string, lang: 'ru' | 'ar' | null) => {
@@ -452,6 +474,12 @@ export default function ReviewPage() {
         </div>
       </div>
 
+      {dirtyIds.size > 0 && (
+        <div className="px-4 py-3 bg-amber-500/10 text-amber-300 border border-amber-500/30 rounded-lg">
+          Auto-refresh paused while editing. Save changes or clear edits to resume.
+        </div>
+      )}
+
       {phrases.length === 0 ? (
         <div className="text-center py-16 text-zinc-500">
           <div className="text-4xl mb-4">✨</div>
@@ -469,6 +497,7 @@ export default function ReviewPage() {
               onRegenerateAudio={(text, language) => handleRegenerateAudio(phrase.id, text, language)}
               regenerating={regeneratingIds.has(phrase.id)}
               audioBust={audioBust[phrase.id]}
+              onDirtyChange={handleDirtyChange}
             />
           ))}
         </div>

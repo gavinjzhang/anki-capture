@@ -19,7 +19,7 @@ export interface Phrase {
   translation: string | null;
   grammar_notes: string | null;
   vocab_breakdown: VocabItem[] | null;
-  detected_language: 'ru' | 'ar' | null;
+  detected_language: 'ru' | 'ar' | 'zh' | 'es' | null;
   language_confidence: number | null;
   source_type: 'image' | 'audio' | 'text';
   audio_url: string | null;
@@ -61,6 +61,7 @@ export async function uploadFile(file: File): Promise<{ id: string; status: stri
 }
 
 export async function uploadText(text: string, language: 'ru' | 'ar'): Promise<{ id: string; status: string }> {
+  // Note: language now supports 'zh' and 'es' as well; kept signature backward compatible where used.
   return request('/api/upload/text', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -94,8 +95,19 @@ export async function deletePhrase(id: string): Promise<void> {
   await request(`/api/phrases/${id}`, { method: 'DELETE' });
 }
 
-export async function regenerateAudio(id: string): Promise<void> {
-  await request(`/api/phrases/${id}/regenerate-audio`, { method: 'POST' });
+export async function regenerateAudio(id: string, opts?: { source_text?: string; language?: 'ru' | 'ar' | null }): Promise<void> {
+  if (opts && (opts.source_text || opts.language)) {
+    await request(`/api/phrases/${id}/regenerate-audio`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...(opts.source_text ? { source_text: opts.source_text } : {}),
+        ...(opts.language ? { language: opts.language } : {}),
+      }),
+    });
+  } else {
+    await request(`/api/phrases/${id}/regenerate-audio`, { method: 'POST' });
+  }
 }
 
 // Export

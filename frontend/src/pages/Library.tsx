@@ -8,6 +8,7 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<StatusFilter>('all')
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [revertingId, setRevertingId] = useState<string | null>(null)
 
   const loadPhrases = async () => {
     setLoading(true)
@@ -37,6 +38,16 @@ export default function LibraryPage() {
       await loadPhrases()
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  const handleSendToReview = async (id: string) => {
+    setRevertingId(id)
+    try {
+      await updatePhrase(id, { status: 'pending_review' as any })
+      await loadPhrases()
+    } finally {
+      setRevertingId(null)
     }
   }
 
@@ -162,7 +173,20 @@ export default function LibraryPage() {
                         </button>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-right space-x-2">
+                      {(phrase.status === 'approved' || phrase.status === 'exported') && (
+                        <button
+                          onClick={() => handleSendToReview(phrase.id)}
+                          disabled={revertingId === phrase.id}
+                          className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                            revertingId === phrase.id
+                              ? 'text-zinc-400 bg-zinc-800 cursor-not-allowed'
+                              : 'text-blue-400 hover:bg-blue-500/20'
+                          }`}
+                        >
+                          {revertingId === phrase.id ? 'Sending…' : 'Send to Review'}
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDelete(phrase.id)}
                         disabled={deletingId === phrase.id}

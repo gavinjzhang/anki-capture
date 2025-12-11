@@ -136,7 +136,21 @@ export async function handleRegenerateAudio(
     return Response.json({ error: 'Phrase not found' }, { status: 404 });
   }
   
-  if (!phrase.source_text) {
+  // Optional text/language overrides from JSON body
+  let overrideText: string | null = null;
+  let overrideLang: 'ru' | 'ar' | null = null;
+  const ct = request.headers.get('Content-Type') || '';
+  if (ct.includes('application/json')) {
+    try {
+      const body = await request.json() as { source_text?: string; language?: 'ru' | 'ar' };
+      overrideText = body.source_text?.trim() || null;
+      overrideLang = body.language || null;
+    } catch {}
+  }
+
+  const sourceText = overrideText || phrase.source_text;
+  const language = (overrideLang || phrase.detected_language) as 'ru' | 'ar' | null;
+  if (!sourceText) {
     return Response.json(
       { error: 'No source text to generate audio from' },
       { status: 400 }
@@ -154,8 +168,8 @@ export async function handleRegenerateAudio(
     phrase_id: id,
     source_type: 'text',  // Treat as text since we just need TTS
     file_url: null,
-    source_text: phrase.source_text,
-    language: phrase.detected_language,
+    source_text: sourceText,
+    language,
     webhook_url: '',
     job_id: jobId,
   }, requestUrl);

@@ -191,6 +191,32 @@ export default function ExportPage() {
             <span>Set the note type to Basic (and reversed card), with fields: Front, Back, Grammar, Vocab, Audio</span>
           </li>
         </ol>
+
+        <details className="mt-6 group">
+          <summary className="flex items-center justify-between cursor-pointer select-none px-3 py-2 bg-zinc-800/50 rounded-md">
+            <span className="font-medium text-zinc-300">Where is Anki's collection.media?</span>
+            <span className="text-zinc-400 transition-transform">›</span>
+          </summary>
+          <div className="mt-3 space-y-2 text-sm text-zinc-400 px-1">
+            <p>
+              Tip: In Anki, you can open it via <span className="font-medium text-zinc-300">Tools → Open Profile Folder</span>, then open the
+              <code className="px-1.5 py-0.5 bg-zinc-800 rounded text-sm ml-1">collection.media</code> folder.
+            </p>
+            <ul className="list-disc pl-6 space-y-1">
+              <li>
+                macOS: <code className="px-1.5 py-0.5 bg-zinc-800 rounded">~/Library/Application Support/Anki2/User 1/collection.media</code>
+              </li>
+              <li>
+                Windows: <code className="px-1.5 py-0.5 bg-zinc-800 rounded">%APPDATA%\Anki2\User 1\collection.media</code>
+                <span className="ml-2 text-zinc-500">(usually C:\Users\&lt;You&gt;\AppData\Roaming\Anki2\User 1\collection.media)</span>
+              </li>
+              <li>
+                Linux: <code className="px-1.5 py-0.5 bg-zinc-800 rounded">~/.local/share/Anki2/User 1/collection.media</code>
+              </li>
+            </ul>
+            <p className="text-zinc-500">Replace “User 1” with your profile name if different.</p>
+          </div>
+        </details>
       </div>
     </div>
   )

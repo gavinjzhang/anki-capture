@@ -6,7 +6,7 @@ type InputMode = 'image' | 'audio' | 'text'
 export default function UploadPage() {
   const [mode, setMode] = useState<InputMode>('image')
   const [text, setText] = useState('')
-  const [language, setLanguage] = useState<'ru' | 'ar'>('ru')
+  const [language, setLanguage] = useState<'ru' | 'ar' | 'zh' | 'es'>('ru')
   const [uploading, setUploading] = useState(false)
   const [uploadTotal, setUploadTotal] = useState(0)
   const [uploadDone, setUploadDone] = useState(0)
@@ -156,6 +156,8 @@ export default function UploadPage() {
                 {[
                   { id: 'ru' as const, label: 'Russian', flag: '🇷🇺' },
                   { id: 'ar' as const, label: 'Arabic', flag: '🇸🇦' },
+                  { id: 'zh' as const, label: 'Chinese', flag: '🇨🇳' },
+                  { id: 'es' as const, label: 'Spanish', flag: '🇪🇸' },
                 ].map(({ id, label, flag }) => (
                   <button
                     key={id}

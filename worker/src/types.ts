@@ -13,7 +13,7 @@ export interface Env {
 
 export type SourceType = 'image' | 'audio' | 'text';
 export type PhraseStatus = 'processing' | 'pending_review' | 'approved' | 'exported';
-export type Language = 'ru' | 'ar';
+export type Language = 'ru' | 'ar' | 'zh' | 'es';
 
 export interface VocabItem {
   word: string;
