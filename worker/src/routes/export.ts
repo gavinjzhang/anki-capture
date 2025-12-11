@@ -14,7 +14,7 @@ function formatVocabBreakdown(vocab: VocabItem[] | null): string {
     if (v.declension) parts.push(`(${v.declension})`);
     if (v.notes) parts.push(`// ${v.notes}`);
     return parts.join(' ');
-  }).join(' | ');
+  }).join('<br>');
 }
 
 function phraseToAnkiLine(phrase: Phrase): string {
