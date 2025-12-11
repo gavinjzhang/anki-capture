@@ -305,3 +305,10 @@ export async function deletePhraseForUser(env: Env, userId: string, id: string):
     .bind(id, userId)
     .run();
 }
+
+export async function isR2KeyReferenced(env: Env, key: string): Promise<boolean> {
+  const row = await env.DB.prepare(
+    'SELECT 1 as ok FROM phrases WHERE original_file_url = ? OR audio_url = ? LIMIT 1'
+  ).bind(key, key).first<{ ok: number }>();
+  return !!row?.ok;
+}

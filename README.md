@@ -77,6 +77,14 @@ npm run deploy
 
 The Worker includes a cron that runs every 15 minutes to move stuck jobs from `processing` to `pending_review` and record a timeout error. The schedule is defined in `wrangler.toml` under `[triggers] crons`.
 
+### Orphan cleanup (R2)
+
+Each cron run also performs a small sweep of R2 objects and deletes those not referenced by any row in D1. This protects against older data left behind from earlier versions or manual deletions.
+
+- Env knobs:
+  - `MAX_ORPHAN_SWEEP` (default 50): maximum objects to scan per run
+  - `MIN_ORPHAN_AGE_MS` (default 24h): skip very recent objects to avoid racing in-flight operations
+
 ## Auth: Clerk (recommended)
 Adds multi-user accounts with hosted auth UI. The frontend sends a Clerk JWT; the Worker verifies it and scopes all data by `user_id` (Clerk user `sub`). R2 keys are namespaced by `user_id`.
 

@@ -14,6 +14,7 @@ import { handleModalWebhook } from './routes/webhook';
 import { handleGetFile } from './routes/files';
 import { handleHealth } from './routes/health';
 import { sweepProcessingTimeouts } from './lib/db';
+import { sweepR2Orphans } from './maintenance/orphans';
 
 // Simple router
 type Handler = (request: Request, env: Env, ...args: string[]) => Promise<Response>;
@@ -116,6 +117,16 @@ export default {
       await sweepProcessingTimeouts(env, 20 * 60 * 1000);
     } catch (err) {
       console.error('Scheduled sweep failed', err);
+    }
+    try {
+      const limit = Number(env.MAX_ORPHAN_SWEEP || '50');
+      const minAgeMs = Number(env.MIN_ORPHAN_AGE_MS || String(24 * 60 * 60 * 1000));
+      const res = await sweepR2Orphans(env, { limit, minAgeMs });
+      if (res.deleted > 0) {
+        console.log('Orphan sweep', { scanned: res.scanned, deleted: res.deleted });
+      }
+    } catch (err) {
+      console.error('Orphan sweep failed', err);
     }
   }
 };

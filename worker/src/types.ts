@@ -7,6 +7,8 @@ export interface Env {
   CLERK_JWT_ISSUER?: string;
   CLERK_JWKS_URL?: string; // optional override for JWKS
   MAX_UPLOAD_MB?: string; // optional, default 20
+  MAX_ORPHAN_SWEEP?: string; // optional, default 50 per run
+  MIN_ORPHAN_AGE_MS?: string; // optional, default 24h
 }
 
 export type SourceType = 'image' | 'audio' | 'text';
