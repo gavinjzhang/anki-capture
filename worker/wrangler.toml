@@ -5,7 +5,7 @@ compatibility_date = "2024-01-01"
 [vars]
 MODAL_WEBHOOK_SECRET = "netsuiteapi"
 CLERK_JWT_ISSUER = "https://thankful-vulture-59.clerk.accounts.dev"
-MODAL_ENDPOINT = ""
+MODAL_ENDPOINT = "https://gavinjzhang--anki-capture-trigger.modal.run"
 
 [[d1_databases]]
 binding = "DB"
@@ -28,7 +28,7 @@ database_id = "local"
 
 # Production
 [env.production]
-vars = { ENVIRONMENT = "production", MODAL_WEBHOOK_SECRET = "netsuiteapi", CLERK_JWT_ISSUER = "", MODAL_ENDPOINT = "" }
+vars = { ENVIRONMENT = "production", MODAL_WEBHOOK_SECRET = "netsuiteapi", CLERK_JWT_ISSUER = "", MODAL_ENDPOINT = "https://gavinjzhang--anki-capture-trigger.modal.run" }
 
 [[env.production.d1_databases]]
 binding = "DB"
