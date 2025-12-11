@@ -14,6 +14,7 @@
 ## Observability
 - Add step duration metrics to logs (enqueue → webhook received → saved).
 - (Done) `/api/health`
+ - Event-driven updates: WebSocket + Durable Object per user; broadcast on upload/webhook/approve/delete; keep polling as fallback.
 
 ## Storage Lifecycle
 - R2 lifecycle rules for old originals.
@@ -24,6 +25,13 @@
 - Batch polish: per-file progress/errors; configurable concurrency.
 - Review: filters (language/date), search, bulk exclude/reject.
 - Approve All: add “Approve Selected” with checkboxes.
+ - Realtime: use WebSocket channel to update UI live; reconnect/backoff indicator.
+ - Review: toast notifications on save/regen errors; keyboard shortcuts (Ctrl/Cmd+S); unsaved badge; disable Approve while dirty.
+ - Review: show job_attempts and last_error; inline Retry button for failed/timeouts.
+ - Library: quick filters (status/language), search by text, sortable columns.
+ - Upload: per-file progress bars and error badges; drag-and-drop hover; image thumbnails.
+ - Audio: playback speed control; small waveform; auto cache-bust on updates (done in Review).
+ - Navigation: persist filters/search in URL; pagination or infinite scroll.
 
 ## Costs & Performance
 - Adaptive Whisper: choose model by duration; optional CPU path for small clips.
@@ -48,6 +56,5 @@
 - Update export builder to guarantee ordering and escaping; include media folder in ZIP.
 - Provide an `.apkg` option later via AnkiConnect or genanki (optional).
 
-# UI Improvements
-- Make the upload page reactive to job completion
-- Fix review page audio regeneration with updates to text
+# Realtime
+- Event-driven UI (WebSocket/DO): plan and implement; remove polling where possible.
