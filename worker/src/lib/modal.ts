@@ -1,7 +1,5 @@
 import { Env, SourceType, Language } from '../types';
 
-const MODAL_ENDPOINT = 'https://gavinjzhang--anki-capture-trigger.modal.run';
-
 export interface ProcessingJob {
   phrase_id: string;
   source_type: SourceType;
@@ -19,8 +17,12 @@ export async function triggerProcessing(
 ): Promise<void> {
   // Build the webhook URL that Modal will call back to
   const webhookUrl = new URL('/api/webhook/modal', requestUrl.origin).toString();
+  const endpoint = env.MODAL_ENDPOINT;
+  if (!endpoint) {
+    throw new Error('MODAL_ENDPOINT is not configured');
+  }
   
-  const response = await fetch(MODAL_ENDPOINT, {
+  const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

@@ -72,6 +72,7 @@ export async function handleUpdatePhrase(
     await updatePhraseForUser(env, userId, id, { detected_language: body.detected_language });
     const jobId = crypto.randomUUID();
     await setCurrentJobForUser(env, userId, id, jobId, true);
+    console.log('Enqueue reprocess', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: id, job_id: jobId, new_language: body.detected_language });
     
     await triggerProcessing(env, {
       phrase_id: id,
@@ -148,6 +149,7 @@ export async function handleRegenerateAudio(
   // We'll handle this as a special "regenerate_audio" job type
   const jobId = crypto.randomUUID();
   await setCurrentJobForUser(env, userId, id, jobId, false);
+  console.log('Enqueue regen-audio', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: id, job_id: jobId });
   await triggerProcessing(env, {
     phrase_id: id,
     source_type: 'text',  // Treat as text since we just need TTS
@@ -175,6 +177,7 @@ export async function handleRetryPhrase(
   const requestUrl = new URL(request.url);
   const jobId = crypto.randomUUID();
   await setCurrentJobForUser(env, userId, id, jobId, true);
+  console.log('Enqueue retry', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: id, job_id: jobId });
   await triggerProcessing(env, {
     phrase_id: id,
     source_type: phrase.source_type,
@@ -193,7 +196,7 @@ export async function handleDeletePhrase(
   env: Env,
   id: string
 ): Promise<Response> {
-  const userId = getUserId(request, env);
+  const userId = await getUserId(request, env);
   const phrase = await getPhraseForUser(env, userId, id);
   
   if (!phrase) {
@@ -213,9 +216,9 @@ export async function handleDeletePhrase(
     keysToDelete.map(async (key) => {
       try {
         await deleteFile(env, key);
-        console.log('Deleted R2 object', { phrase_id: id, key });
+        console.log('Deleted R2 object', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: id, key });
       } catch (err) {
-        console.error('Failed to delete R2 object', { phrase_id: id, key, error: err instanceof Error ? err.message : String(err) });
+        console.error('Failed to delete R2 object', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: id, key, error: err instanceof Error ? err.message : String(err) });
       }
     })
   );

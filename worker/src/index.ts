@@ -64,6 +64,11 @@ function corsHeaders(): HeadersInit {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // Assign a request ID for structured logs
+    const requestId = crypto.randomUUID();
+    const headersClone = new Headers(request.headers);
+    headersClone.set('x-request-id', requestId);
+    const reqWithId = new Request(request, { headers: headersClone });
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders() });
@@ -79,18 +84,19 @@ export default {
       const match = path.match(route.pattern);
       if (match) {
         try {
-          const response = await route.handler(request, env, ...match.slice(1));
+          const response = await route.handler(reqWithId, env, ...match.slice(1));
           
           // Add CORS headers to response
           const headers = new Headers(response.headers);
           Object.entries(corsHeaders()).forEach(([k, v]) => headers.set(k, v));
+          headers.set('x-request-id', requestId);
           
           return new Response(response.body, {
             status: response.status,
             headers,
           });
         } catch (error) {
-          console.error('Route error:', error);
+          console.error('Route error', { request_id: requestId, path, error: error instanceof Error ? error.message : String(error) });
           return Response.json(
             { error: error instanceof Error ? error.message : 'Internal error' },
             { status: 500, headers: corsHeaders() }

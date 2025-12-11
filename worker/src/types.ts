@@ -2,6 +2,7 @@ export interface Env {
   DB: D1Database;
   BUCKET: R2Bucket;
   MODAL_WEBHOOK_SECRET: string;
+  MODAL_ENDPOINT?: string;
   ENVIRONMENT: string;
   CLERK_JWT_ISSUER?: string;
   CLERK_JWKS_URL?: string; // optional override for JWKS

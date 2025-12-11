@@ -311,3 +311,13 @@ MIT
 You can cap upload size in the Worker:
 
 - Set `MAX_UPLOAD_MB` in `wrangler.toml` (or dashboard). Default: 20
+### Modal endpoint configuration
+
+Set the Modal trigger URL via the Worker env var `MODAL_ENDPOINT` (in `wrangler.toml` or dashboard). The Worker no longer uses a hardcoded URL.
+
+Example:
+
+```
+[vars]
+MODAL_ENDPOINT = "https://<your-username>--anki-capture-trigger.modal.run"
+```

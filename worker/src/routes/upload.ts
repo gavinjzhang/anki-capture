@@ -56,6 +56,7 @@ export async function handleFileUpload(
   const requestUrl = new URL(request.url);
   const jobId = crypto.randomUUID();
   await setCurrentJobForUser(env, userId, phraseId, jobId, true);
+  console.log('Enqueue processing', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: phraseId, job_id: jobId, source_type: sourceType });
   await triggerProcessing(env, {
     phrase_id: phraseId,
     source_type: sourceType,
@@ -100,6 +101,7 @@ export async function handleTextUpload(
   const requestUrl = new URL(request.url);
   const jobId = crypto.randomUUID();
   await setCurrentJobForUser(env, userId, phraseId, jobId, true);
+  console.log('Enqueue processing', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: phraseId, job_id: jobId, source_type: 'text' });
   await triggerProcessing(env, {
     phrase_id: phraseId,
     source_type: 'text',

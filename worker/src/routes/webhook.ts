@@ -27,13 +27,13 @@ export async function handleModalWebhook(
   // Check phrase exists
   const phrase = await getPhrase(env, payload.phrase_id);
   if (!phrase) {
-    console.error(`Phrase not found: ${payload.phrase_id}`);
+    console.error('Phrase not found', { phrase_id: payload.phrase_id, request_id: request.headers.get('x-request-id') || undefined });
     return Response.json({ error: 'Phrase not found' }, { status: 404 });
   }
   
   // Idempotency: ignore stale/duplicate webhooks if job_id doesn't match current
   if (phrase.current_job_id && payload.job_id && payload.job_id !== phrase.current_job_id) {
-    console.warn('Ignoring stale webhook', { phrase_id: payload.phrase_id, job_id: payload.job_id, current_job_id: phrase.current_job_id });
+    console.warn('Ignoring stale webhook', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: payload.phrase_id, job_id: payload.job_id, current_job_id: phrase.current_job_id });
     return Response.json({ received: true, ignored: true });
   }
 
@@ -71,15 +71,15 @@ export async function handleModalWebhook(
         audio_url: audioUrl,
       });
       
-      console.log(`Successfully processed phrase: ${payload.phrase_id}`);
+      console.log('Processed phrase', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: payload.phrase_id, job_id: payload.job_id || null });
       
     } catch (err) {
-      console.error(`Failed to save results for ${payload.phrase_id}:`, err);
+      console.error('Failed to save results', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: payload.phrase_id, error: err instanceof Error ? err.message : String(err) });
       return Response.json({ error: 'Failed to save results' }, { status: 500 });
     }
   } else {
     // Processing failed - move to review with error message
-    console.error(`Processing failed for ${payload.phrase_id}: ${payload.error}`);
+    console.error('Processing failed', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: payload.phrase_id, error: payload.error });
     
     await updatePhrase(env, payload.phrase_id, { 
       status: 'pending_review',
