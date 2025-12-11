@@ -18,13 +18,14 @@ function formatVocabBreakdown(vocab: VocabItem[] | null): string {
 }
 
 function phraseToAnkiLine(phrase: Phrase): string {
-  // Format: source_text \t translation \t grammar_notes \t vocab \t [sound:id.mp3]
+  // Format: source_text \t translation \t grammar_notes \t vocab \t [sound:id.mp3] \t transliteration
   const fields = [
     phrase.source_text || '',
     phrase.translation || '',
     phrase.grammar_notes || '',
     formatVocabBreakdown(phrase.vocab_breakdown),
     phrase.audio_url ? `[sound:${phrase.id}.mp3]` : '',
+    phrase.transliteration || '',
   ];
   
   // Escape tabs and newlines in fields
