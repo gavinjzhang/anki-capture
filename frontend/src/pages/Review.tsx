@@ -132,7 +132,7 @@ function PhraseCard({
   onUpdate: (updates: Partial<Phrase>) => Promise<void>;
   onApprove: () => Promise<void>;
   onDelete: () => Promise<void>;
-  onRegenerateAudio: () => Promise<void>;
+  onRegenerateAudio: (text: string, language: 'ru' | 'ar' | null) => Promise<void>;
   regenerating: boolean;
   audioBust?: string;
 }) {
@@ -242,16 +242,24 @@ function PhraseCard({
                 <span className="text-zinc-500 text-sm">No audio</span>
               )}
               <button
-                onClick={onRegenerateAudio}
+                onClick={() => onRegenerateAudio(localPhrase.source_text || '', localPhrase.detected_language)}
                 disabled={regenerating}
-                className={`px-3 py-2 text-sm rounded-lg transition-colors ${
+                className={`px-3 py-2 text-sm rounded-lg transition-colors flex items-center justify-center ${
                   regenerating 
                     ? 'bg-zinc-800 text-zinc-400 cursor-not-allowed' 
                     : 'bg-zinc-800 hover:bg-zinc-700'
                 }`}
                 title="Regenerate audio from source text"
+                aria-busy={regenerating}
               >
-                {regenerating ? 'Regenerating…' : '🔄'}
+                {regenerating ? (
+                  <svg className="animate-spin h-4 w-4 text-zinc-300" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                    <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                  </svg>
+                ) : (
+                  <span role="img" aria-label="Regenerate">🔄</span>
+                )}
               </button>
             </div>
             {regenerating && (
@@ -357,11 +365,11 @@ export default function ReviewPage() {
     await loadPhrases()
   }
 
-  const handleRegenerateAudio = async (id: string) => {
+  const handleRegenerateAudio = async (id: string, text: string, lang: 'ru' | 'ar' | null) => {
     // Optimistically show progress and prevent multiple taps
     setRegeneratingIds(prev => new Set(prev).add(id))
     try {
-      await regenerateAudio(id)
+      await regenerateAudio(id, { source_text: text, language: lang })
       // Give backend a moment to produce new audio, then bust cache and refresh
       await new Promise(r => setTimeout(r, 4000))
       setAudioBust(prev => ({ ...prev, [id]: String(Date.now()) }))
@@ -458,7 +466,7 @@ export default function ReviewPage() {
               onUpdate={(updates) => handleUpdate(phrase.id, updates)}
               onApprove={() => handleApprove(phrase.id)}
               onDelete={() => handleDelete(phrase.id)}
-              onRegenerateAudio={() => handleRegenerateAudio(phrase.id)}
+              onRegenerateAudio={(text, language) => handleRegenerateAudio(phrase.id, text, language)}
               regenerating={regeneratingIds.has(phrase.id)}
               audioBust={audioBust[phrase.id]}
             />

@@ -1,30 +1,26 @@
 # Project TODOs
 
 ## Core Reliability
-- Job timeouts + retries: cron marks `processing` > N min to `pending_review (timed out)`; add `/api/phrases/:id/retry` to requeue.
-- Idempotent webhooks: include `request_id`, dedupe on D1; Modal retries on non-2xx with backoff.
-- Persist processing metadata: `job_started_at`, `job_attempts`, `last_error` columns.
+- Modal retries/backoff: configure Modal to retry non-2xx with exponential backoff.
+- Optional: job audit table for history and metrics (beyond current per-phrase `current_job_id`).
 
 ## Security / Auth
-- Cloudflare Access SSO: verify Access JWT in Worker; bypass `/api/webhook/modal`.
-- Multi-user scoping: add `user_id` to D1 `phrases`; scope all queries by `user_id`.
-- R2 namespacing: prefix object keys with `user_id/`.
 - Secrets: move `MODAL_WEBHOOK_SECRET` to Worker secret; rotate.
 
 ## DX / Config
-- Env-based Modal endpoint: read `MODAL_ENDPOINT` from Worker vars for dev/prod.
-- Enforce file size/type limits at Worker (image/audio).
+- (Done) Env-based Modal endpoint
+- (Done) Upload size/type validation
 
 ## Observability
-- Structured logs with `phrase_id`/`request_id`; step durations.
-- `/api/health`: quick DB + R2 checks.
+- Add step duration metrics to logs (enqueue → webhook received → saved).
+- (Done) `/api/health`
 
 ## Storage Lifecycle
-- R2 lifecycle rules for old originals; delete media on phrase delete.
+- R2 lifecycle rules for old originals.
 - Orphan sweep: scheduled clean-up for R2 keys not referenced in D1.
 
 ## Frontend UX
-- Processing status: show job age, retry button, hide stale.
+- Processing status: show job age, Retry button for failed/timeouts, hide stale.
 - Batch polish: per-file progress/errors; configurable concurrency.
 - Review: filters (language/date), search, bulk exclude/reject.
 - Approve All: add “Approve Selected” with checkboxes.
@@ -52,3 +48,6 @@
 - Update export builder to guarantee ordering and escaping; include media folder in ZIP.
 - Provide an `.apkg` option later via AnkiConnect or genanki (optional).
 
+# UI Improvements
+- Make the upload page reactive to job completion
+- Fix review page audio regeneration with updates to text
