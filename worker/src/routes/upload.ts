@@ -60,7 +60,7 @@ export async function handleFileUpload(
   await triggerProcessing(env, {
     phrase_id: phraseId,
     source_type: sourceType,
-    file_url: buildFileUrl(requestUrl, fileKey),
+    file_url: await buildFileUrl(env, requestUrl, fileKey),
     source_text: null,
     language: null,
     webhook_url: '', // Will be set in triggerProcessing

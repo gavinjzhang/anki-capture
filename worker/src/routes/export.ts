@@ -2,6 +2,7 @@ import { Env, Phrase, VocabItem } from '../types';
 import { getExportablePhrasesForUser, markPhrasesExportedForUser } from '../lib/db';
 import { getFile } from '../lib/r2';
 import { getUserId } from '../lib/auth';
+import { buildAbsoluteSignedUrl } from '../lib/signing';
 
 function formatVocabBreakdown(vocab: VocabItem[] | null): string {
   if (!vocab || vocab.length === 0) return '';
@@ -52,12 +53,14 @@ export async function handleExport(
   // The frontend can handle creating the zip
   // (Creating actual zip in Worker is possible but adds complexity)
   
+  const origin = new URL(request.url).origin;
+  const ttl = 10 * 60; // 10 minutes
   const exportData = {
-    phrases: phrases.map(p => ({
+    phrases: await Promise.all(phrases.map(async p => ({
       id: p.id,
       line: phraseToAnkiLine(p),
-      audio_url: p.audio_url,
-    })),
+      audio_url: p.audio_url ? (await buildAbsoluteSignedUrl(env, origin, p.audio_url, ttl)) || p.audio_url : null,
+    }))),
     txt_content: phrases.map(phraseToAnkiLine).join('\n'),
   };
   

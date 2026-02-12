@@ -60,8 +60,7 @@ export async function uploadFile(file: File): Promise<{ id: string; status: stri
   });
 }
 
-export async function uploadText(text: string, language: 'ru' | 'ar'): Promise<{ id: string; status: string }> {
-  // Note: language now supports 'zh' and 'es' as well; kept signature backward compatible where used.
+export async function uploadText(text: string, language: 'ru' | 'ar' | 'zh' | 'es'): Promise<{ id: string; status: string }> {
   return request('/api/upload/text', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -95,7 +94,7 @@ export async function deletePhrase(id: string): Promise<void> {
   await request(`/api/phrases/${id}`, { method: 'DELETE' });
 }
 
-export async function regenerateAudio(id: string, opts?: { source_text?: string; language?: 'ru' | 'ar' | null }): Promise<void> {
+export async function regenerateAudio(id: string, opts?: { source_text?: string; language?: 'ru' | 'ar' | 'zh' | 'es' | null }): Promise<void> {
   if (opts && (opts.source_text || opts.language)) {
     await request(`/api/phrases/${id}/regenerate-audio`, {
       method: 'POST',
@@ -134,6 +133,8 @@ export async function markExported(phraseIds: string[]): Promise<void> {
 
 // Files
 export function getFileUrl(path: string): string {
-  if (path.startsWith('/')) return `${API_BASE}${path}`;
-  return `${API_BASE}/api/files/${encodeURIComponent(path)}`;
+  if (!path) return '';
+  if (/^https?:\/\//i.test(path)) return path; // already absolute (e.g., signed URL)
+  if (path.startsWith('/')) return `${API_BASE}${path}`; // absolute to API base
+  return `${API_BASE}/api/files/${encodeURIComponent(path)}`; // key path
 }

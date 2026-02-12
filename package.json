@@ -1,0 +1,24 @@
+{
+  "name": "anki-capture",
+  "version": "1.0.0",
+  "description": "A serverless app for capturing Russian and Arabic phrases from screenshots, audio recordings, or text input, processing them with OCR/transcription and AI-powered grammar breakdowns, and exporting to Anki.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gavinjzhang/anki-capture.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/gavinjzhang/anki-capture/issues"
+  },
+  "homepage": "https://github.com/gavinjzhang/anki-capture#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
+  }
+}

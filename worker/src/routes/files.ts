@@ -1,6 +1,7 @@
 import { Env } from '../types';
 import { getFile } from '../lib/r2';
 import { getUserId } from '../lib/auth';
+import { verifySignature } from '../lib/signing';
 
 // GET /api/files/:key
 export async function handleGetFile(
@@ -9,15 +10,35 @@ export async function handleGetFile(
   key: string
 ): Promise<Response> {
   const decodedKey = decodeURIComponent(key);
-  // If the request is authenticated (Clerk or Access), ensure the caller can only fetch
-  // files under their own user namespace. Allow unauthenticated access to
-  // support Modal jobs fetching originals/audio.
-  const hasBearer = request.headers.get('Authorization')?.startsWith('Bearer ');
-  const callerEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
-  if (hasBearer || callerEmail) {
-    const userId = await getUserId(request, env);
-    const isLegacy = decodedKey.startsWith('original/') || decodedKey.startsWith('audio/');
-    if (!isLegacy && !decodedKey.startsWith(`${userId}/`)) {
+  // Authorize via signed URL or authenticated namespace match
+  const url = new URL(request.url);
+  const e = url.searchParams.get('e');
+  const sig = url.searchParams.get('sig');
+
+  let authorized = false;
+  if (e && sig) {
+    const exp = parseInt(e, 10);
+    if (!Number.isNaN(exp) && exp * 1000 >= Date.now()) {
+      authorized = await verifySignature(env, decodedKey, exp, sig);
+    }
+  }
+
+  if (!authorized) {
+    const hasBearer = request.headers.get('Authorization')?.startsWith('Bearer ');
+    const callerEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
+    if (hasBearer || callerEmail) {
+      const userId = await getUserId(request, env);
+      const isLegacy = decodedKey.startsWith('original/') || decodedKey.startsWith('audio/');
+      if (!isLegacy && decodedKey.startsWith(`${userId}/`)) {
+        authorized = true;
+      }
+    }
+  }
+
+  if (!authorized) {
+    if (!env.FILE_URL_SIGNING_SECRET) {
+      // Legacy fallback when signing is not configured
+    } else {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
   }

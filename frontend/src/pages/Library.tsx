@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { listPhrases, updatePhrase, deletePhrase as apiDeletePhrase, Phrase } from '../lib/api'
+import { useAdaptivePolling } from '../lib/useAdaptivePolling'
 
 type StatusFilter = 'all' | 'processing' | 'pending_review' | 'approved' | 'exported'
 
@@ -21,13 +22,22 @@ export default function LibraryPage() {
     }
   }
 
+  // Adaptive polling: 5s when processing jobs exist, 60s when idle
+  const { pollNow } = useAdaptivePolling({
+    onPoll: loadPhrases,
+    shouldPollFast: () => phrases.some(p => p.status === 'processing'),
+    fastInterval: 5000,   // 5 seconds when jobs are processing
+    slowInterval: 60000,  // 60 seconds when idle (less critical than Review page)
+  })
+
+  // Reload when filter changes
   useEffect(() => {
     loadPhrases()
   }, [filter])
 
   const toggleExclude = async (phrase: Phrase) => {
     await updatePhrase(phrase.id, { exclude_from_export: !phrase.exclude_from_export })
-    await loadPhrases()
+    await pollNow() // Immediate refresh after user action
   }
 
   const handleDelete = async (id: string) => {
@@ -35,7 +45,7 @@ export default function LibraryPage() {
     setDeletingId(id)
     try {
       await apiDeletePhrase(id)
-      await loadPhrases()
+      await pollNow() // Immediate refresh after user action
     } finally {
       setDeletingId(null)
     }
@@ -45,7 +55,7 @@ export default function LibraryPage() {
     setRevertingId(id)
     try {
       await updatePhrase(id, { status: 'pending_review' as any })
-      await loadPhrases()
+      await pollNow() // Immediate refresh after user action
     } finally {
       setRevertingId(null)
     }

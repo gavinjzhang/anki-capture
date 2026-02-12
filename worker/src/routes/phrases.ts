@@ -10,6 +10,7 @@ import { deleteFile } from '../lib/r2';
 import { triggerProcessing, buildFileUrl } from '../lib/modal';
 import { getUserId } from '../lib/auth';
 import { setCurrentJobForUser } from '../lib/db';
+import { buildAbsoluteSignedUrl } from '../lib/signing';
 
 // GET /api/phrases
 export async function handleListPhrases(
@@ -22,7 +23,15 @@ export async function handleListPhrases(
   const limit = parseInt(url.searchParams.get('limit') || '100', 10);
   
   const phrases = await listPhrasesForUser(env, userId, status || undefined, limit);
-  return Response.json({ phrases });
+  // Attach short-lived signed URLs for any file fields
+  const origin = new URL(request.url).origin;
+  const ttl = 10 * 60; // 10 minutes
+  const signed = await Promise.all(phrases.map(async (p) => ({
+    ...p,
+    audio_url: p.audio_url ? (await buildAbsoluteSignedUrl(env, origin, p.audio_url, ttl)) || p.audio_url : null,
+    original_file_url: p.original_file_url ? (await buildAbsoluteSignedUrl(env, origin, p.original_file_url, ttl)) || p.original_file_url : null,
+  })));
+  return Response.json({ phrases: signed });
 }
 
 // GET /api/phrases/:id
@@ -37,8 +46,15 @@ export async function handleGetPhrase(
   if (!phrase) {
     return Response.json({ error: 'Phrase not found' }, { status: 404 });
   }
-  
-  return Response.json({ phrase });
+  // Sign file URLs for direct use by client
+  const origin = new URL(request.url).origin;
+  const ttl = 10 * 60; // 10 minutes
+  const signedPhrase = {
+    ...phrase,
+    audio_url: phrase.audio_url ? (await buildAbsoluteSignedUrl(env, origin, phrase.audio_url, ttl)) || phrase.audio_url : null,
+    original_file_url: phrase.original_file_url ? (await buildAbsoluteSignedUrl(env, origin, phrase.original_file_url, ttl)) || phrase.original_file_url : null,
+  };
+  return Response.json({ phrase: signedPhrase });
 }
 
 // PATCH /api/phrases/:id
@@ -78,7 +94,7 @@ export async function handleUpdatePhrase(
       phrase_id: id,
       source_type: phrase.source_type,
       file_url: phrase.original_file_url 
-        ? buildFileUrl(requestUrl, phrase.original_file_url) 
+        ? await buildFileUrl(env, requestUrl, phrase.original_file_url) 
         : null,
       source_text: phrase.source_text,
       language: body.detected_language,
@@ -95,7 +111,15 @@ export async function handleUpdatePhrase(
   await updatePhraseForUser(env, userId, id, body);
   
   const updated = await getPhraseForUser(env, userId, id);
-  return Response.json({ phrase: updated });
+  // Sign file URLs in the response
+  const origin = new URL(request.url).origin;
+  const ttl = 10 * 60;
+  const signedUpdated = updated ? {
+    ...updated,
+    audio_url: updated.audio_url ? (await buildAbsoluteSignedUrl(env, origin, updated.audio_url, ttl)) || updated.audio_url : null,
+    original_file_url: updated.original_file_url ? (await buildAbsoluteSignedUrl(env, origin, updated.original_file_url, ttl)) || updated.original_file_url : null,
+  } : null;
+  return Response.json({ phrase: signedUpdated });
 }
 
 // POST /api/phrases/:id/approve
@@ -195,7 +219,7 @@ export async function handleRetryPhrase(
   await triggerProcessing(env, {
     phrase_id: id,
     source_type: phrase.source_type,
-    file_url: phrase.original_file_url ? buildFileUrl(requestUrl, phrase.original_file_url) : null,
+    file_url: phrase.original_file_url ? await buildFileUrl(env, requestUrl, phrase.original_file_url) : null,
     source_text: phrase.source_text,
     language: phrase.detected_language,
     webhook_url: '',

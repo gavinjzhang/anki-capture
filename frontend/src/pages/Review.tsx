@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
-import { 
-  listPhrases, 
-  updatePhrase, 
-  approvePhrase, 
+import {
+  listPhrases,
+  updatePhrase,
+  approvePhrase,
   deletePhrase,
   regenerateAudio,
   getFileUrl,
   Phrase,
-  VocabItem 
+  VocabItem
 } from '../lib/api'
+import { useAdaptivePolling } from '../lib/useAdaptivePolling'
 
 function VocabTable({ 
   vocab, 
@@ -17,7 +18,7 @@ function VocabTable({
 }: { 
   vocab: VocabItem[];
   onChange: (vocab: VocabItem[]) => void;
-  language: 'ru' | 'ar' | null;
+  language: 'ru' | 'ar' | 'zh' | 'es' | null;
 }) {
   const updateItem = (index: number, field: keyof VocabItem, value: string | null) => {
     const updated = [...vocab]
@@ -133,7 +134,7 @@ function PhraseCard({
   onUpdate: (updates: Partial<Phrase>) => Promise<void>;
   onApprove: () => Promise<void>;
   onDelete: () => Promise<void>;
-  onRegenerateAudio: (text: string, language: 'ru' | 'ar' | null) => Promise<void>;
+  onRegenerateAudio: (text: string, language: 'ru' | 'ar' | 'zh' | 'es' | null) => Promise<void>;
   regenerating: boolean;
   audioBust?: string;
   onDirtyChange: (id: string, dirty: boolean) => void;
@@ -345,8 +346,6 @@ export default function ReviewPage() {
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set())
 
   const loadPhrases = useCallback(async () => {
-    // Pause auto-refresh while any card is being edited
-    if (dirtyIds.size > 0) return
     try {
       const { phrases } = await listPhrases('pending_review')
       setPhrases(phrases)
@@ -355,28 +354,32 @@ export default function ReviewPage() {
     } finally {
       setLoading(false)
     }
-  }, [dirtyIds])
+  }, [])
 
-  useEffect(() => {
-    loadPhrases()
-    const interval = setInterval(loadPhrases, 10000)
-    return () => clearInterval(interval)
-  }, [loadPhrases])
+  // Adaptive polling: 3s when processing jobs exist, 30s when idle
+  // Pauses while editing to avoid clobbering unsaved changes
+  const { pollNow } = useAdaptivePolling({
+    onPoll: loadPhrases,
+    shouldPollFast: () => phrases.some(p => p.status === 'processing'),
+    fastInterval: 3000,   // 3 seconds when jobs are processing
+    slowInterval: 30000,  // 30 seconds when idle (AWS CloudFormation style)
+    enabled: dirtyIds.size === 0, // Pause while editing
+  })
 
   const handleUpdate = async (id: string, updates: Partial<Phrase>) => {
     await updatePhrase(id, updates)
-    await loadPhrases()
+    await pollNow() // Immediate refresh after user action
   }
 
   const handleApprove = async (id: string) => {
     await approvePhrase(id)
-    await loadPhrases()
+    await pollNow() // Immediate refresh after user action
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this phrase?')) return
     await deletePhrase(id)
-    await loadPhrases()
+    await pollNow() // Immediate refresh after user action
   }
 
   const handleDirtyChange = (id: string, dirty: boolean) => {
@@ -387,7 +390,7 @@ export default function ReviewPage() {
     })
   }
 
-  const handleRegenerateAudio = async (id: string, text: string, lang: 'ru' | 'ar' | null) => {
+  const handleRegenerateAudio = async (id: string, text: string, lang: 'ru' | 'ar' | 'zh' | 'es' | null) => {
     // Optimistically show progress and prevent multiple taps
     setRegeneratingIds(prev => new Set(prev).add(id))
     try {
@@ -395,7 +398,7 @@ export default function ReviewPage() {
       // Give backend a moment to produce new audio, then bust cache and refresh
       await new Promise(r => setTimeout(r, 4000))
       setAudioBust(prev => ({ ...prev, [id]: String(Date.now()) }))
-      await loadPhrases()
+      await pollNow()
     } finally {
       setRegeneratingIds(prev => {
         const next = new Set(prev)
@@ -426,7 +429,7 @@ export default function ReviewPage() {
       }
     }
     await Promise.all(Array.from({ length: Math.min(concurrency, ids.length) }).map(() => runNext()))
-    await loadPhrases()
+    await pollNow()
     setApprovingAll(false)
   }
 
@@ -466,7 +469,7 @@ export default function ReviewPage() {
             </button>
           )}
           <button
-            onClick={loadPhrases}
+            onClick={pollNow}
             className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition-colors"
           >
             Refresh

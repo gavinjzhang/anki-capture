@@ -112,7 +112,7 @@ Worker
 
 Notes
 
-- Webhook `/api/webhook/modal` and unauthenticated asset fetches by Modal remain open. To fully lock down `/api/files`, switch to signed URLs.
+- Webhook `/api/webhook/modal` remains open. To fully lock down `/api/files`, signed URLs are enabled (see below).
 - For local dev without Clerk, the app falls back to `x-user` header or `dev@local`.
 
 ### Multi-user Deployment Guide (Backfill + Migration)
@@ -249,6 +249,17 @@ npm run dev            # Starts on localhost:8787
 cd frontend
 npm run dev  # Starts on localhost:5173, proxies /api to :8787
 ```
+
+## Signed File URLs
+
+The Worker now serves files from R2 via short‑lived HMAC‑signed URLs to prevent public access:
+
+- Configure the secret once per environment:
+  - `cd worker && npx wrangler secret put FILE_URL_SIGNING_SECRET`
+- The API returns signed `audio_url`/`original_file_url` values in phrase and export responses.
+- The Modal jobs receive a long‑lived signed URL (24h TTL) to fetch originals.
+- The `/api/files/:key` route accepts `?e=<unix_ts>&sig=<hmac>` and also allows authenticated access scoped to the caller’s namespace.
+- If `FILE_URL_SIGNING_SECRET` is not set (e.g., during local dev), the route permits legacy unauthenticated access to avoid breaking the UI.
 
 ## Usage
 

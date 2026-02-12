@@ -9,6 +9,7 @@ export interface Env {
   MAX_UPLOAD_MB?: string; // optional, default 20
   MAX_ORPHAN_SWEEP?: string; // optional, default 50 per run
   MIN_ORPHAN_AGE_MS?: string; // optional, default 24h
+  FILE_URL_SIGNING_SECRET?: string; // HMAC secret for signed /api/files URLs
 }
 
 export type SourceType = 'image' | 'audio' | 'text';

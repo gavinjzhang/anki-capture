@@ -1,4 +1,5 @@
 import { Env, SourceType, Language } from '../types';
+import { buildAbsoluteSignedUrl } from './signing';
 
 export interface ProcessingJob {
   phrase_id: string;
@@ -40,6 +41,10 @@ export async function triggerProcessing(
   }
 }
 
-export function buildFileUrl(requestUrl: URL, fileKey: string): string {
-  return new URL(`/api/files/${encodeURIComponent(fileKey)}`, requestUrl.origin).toString();
+export async function buildFileUrl(env: Env, requestUrl: URL, fileKey: string): Promise<string> {
+  // Default to a long TTL for background jobs
+  const ttl = 24 * 60 * 60; // 24 hours
+  const signed = await buildAbsoluteSignedUrl(env, requestUrl.origin, fileKey, ttl);
+  // Fallback to unsigned path if signing is not configured
+  return signed || new URL(`/api/files/${encodeURIComponent(fileKey)}`, requestUrl.origin).toString();
 }
