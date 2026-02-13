@@ -48,15 +48,16 @@ jobs:
         run: cd worker && npm ci
 
       - name: Run tests
-        run: cd worker && npm test -- --coverage
+        run: cd worker && npm test
 
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./worker/coverage/lcov.info
-          flags: worker
-          token: ${{ secrets.CODECOV_TOKEN }}
-        continue-on-error: true
+      # Coverage disabled - v8 coverage doesn't work with Cloudflare Workers environment
+      # - name: Upload coverage
+      #   uses: codecov/codecov-action@v4
+      #   with:
+      #     files: ./worker/coverage/lcov.info
+      #     flags: worker
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      #   continue-on-error: true
 
   test-frontend:
     name: Frontend Tests

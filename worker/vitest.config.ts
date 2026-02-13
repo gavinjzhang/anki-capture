@@ -19,6 +19,10 @@ export default defineWorkersConfig({
       },
     },
     coverage: {
+      // Disabled: v8 coverage doesn't work with Cloudflare Workers environment
+      // (requires node:inspector which isn't available in workerd runtime)
+      // TODO: Investigate alternative coverage solutions or switch to Node.js pool for unit tests
+      enabled: false,
       provider: "v8",
       reporter: ["text", "json", "html", "lcov"],
       include: ["src/**/*.ts"],
