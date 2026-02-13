@@ -16,8 +16,9 @@ export async function handleModalWebhook(
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
   
-  const payload = await request.json() as ModalWebhookPayload & { 
-    result?: { audio_data?: string } 
+  const payload = await request.json() as ModalWebhookPayload & {
+    result?: { audio_data?: string };
+    audio_only?: boolean;
   };
   
   if (!payload.phrase_id) {
@@ -60,16 +61,26 @@ export async function handleModalWebhook(
       }
       
       // Update phrase with processing results
-      await updatePhraseFromProcessing(env, payload.phrase_id, {
-        source_text: payload.result.source_text,
-        transliteration: payload.result.transliteration,
-        translation: payload.result.translation,
-        grammar_notes: payload.result.grammar_notes,
-        vocab_breakdown: payload.result.vocab_breakdown,
-        detected_language: payload.result.detected_language,
-        language_confidence: payload.result.language_confidence,
-        audio_url: audioUrl,
-      });
+      if (payload.audio_only) {
+        // Audio-only regeneration: only update audio and source_text
+        // Keep existing translation, grammar, vocab breakdown
+        await updatePhrase(env, payload.phrase_id, {
+          source_text: payload.result.source_text,
+          audio_url: audioUrl,
+        });
+      } else {
+        // Full processing: update all fields
+        await updatePhraseFromProcessing(env, payload.phrase_id, {
+          source_text: payload.result.source_text,
+          transliteration: payload.result.transliteration,
+          translation: payload.result.translation,
+          grammar_notes: payload.result.grammar_notes,
+          vocab_breakdown: payload.result.vocab_breakdown,
+          detected_language: payload.result.detected_language,
+          language_confidence: payload.result.language_confidence,
+          audio_url: audioUrl,
+        });
+      }
       
       console.log('Processed phrase', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: payload.phrase_id, job_id: payload.job_id || null });
       

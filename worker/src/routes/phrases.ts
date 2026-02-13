@@ -196,6 +196,7 @@ export async function handleRegenerateAudio(
     language,
     webhook_url: '',
     job_id: jobId,
+    audio_only: true,  // Only regenerate audio, don't overwrite other fields
   }, requestUrl);
   
   return Response.json({ message: 'Audio regeneration triggered' });

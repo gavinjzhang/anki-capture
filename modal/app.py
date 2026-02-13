@@ -333,8 +333,12 @@ async def process_upload(
     language: Optional[str],
     webhook_url: str,
     webhook_secret: str,
+    audio_only: bool = False,
 ) -> None:
-    """Main processing pipeline - orchestrates all steps."""
+    """Main processing pipeline - orchestrates all steps.
+
+    If audio_only is True, only regenerates audio (skips breakdown generation).
+    """
     
     try:
         print(f"Processing {phrase_id}: type={source_type}, lang={language}")
@@ -368,11 +372,13 @@ async def process_upload(
         
         extracted_text = extracted_text.strip()
         print(f"Extracted text: {extracted_text[:100]}...")
-        
-        # Step 2: Generate breakdown
-        print(f"Generating breakdown for {detected_language}")
-        breakdown = generate_breakdown.remote(extracted_text, detected_language)
-        
+
+        # Step 2: Generate breakdown (skip if audio_only)
+        breakdown = None
+        if not audio_only:
+            print(f"Generating breakdown for {detected_language}")
+            breakdown = generate_breakdown.remote(extracted_text, detected_language)
+
         # Step 3: Generate TTS (for images and text; audio input already has audio)
         audio_b64 = None
         if source_type in ("image", "text"):
@@ -381,21 +387,29 @@ async def process_upload(
             audio_b64 = base64.b64encode(audio_data).decode()
         
         # Step 4: Send results back via webhook
-        payload = {
+        result_data = {
             "phrase_id": phrase_id,
-            "success": True,
-            "result": {
-                "phrase_id": phrase_id,
-                "source_text": extracted_text,
+            "source_text": extracted_text,
+            "detected_language": detected_language,
+            "language_confidence": confidence,
+            "audio_url": file_url if source_type == "audio" else None,
+            "audio_data": audio_b64,
+        }
+
+        # Only include breakdown fields if they were generated
+        if breakdown:
+            result_data.update({
                 "transliteration": breakdown["transliteration"],
                 "translation": breakdown["translation"],
                 "grammar_notes": breakdown["grammar_notes"],
                 "vocab_breakdown": breakdown["vocab_breakdown"],
-                "detected_language": detected_language,
-                "language_confidence": confidence,
-                "audio_url": file_url if source_type == "audio" else None,
-                "audio_data": audio_b64,
-            },
+            })
+
+        payload = {
+            "phrase_id": phrase_id,
+            "success": True,
+            "result": result_data,
+            "audio_only": audio_only,  # Flag to tell webhook handler
         }
         
         print(f"Sending results to webhook for {phrase_id}")
@@ -478,6 +492,7 @@ Focus on content words. Include pronouns/particles only when relevant.
         language=data.get("language"),
         webhook_url=data["webhook_url"],
         webhook_secret=data["webhook_secret"],
+        audio_only=data.get("audio_only", False),
     )
     
     return {"status": "processing", "phrase_id": phrase_id}

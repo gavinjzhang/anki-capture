@@ -9,6 +9,7 @@ export interface ProcessingJob {
   language: Language | null;    // Forced language (for text input or reprocessing)
   webhook_url: string;
   job_id: string;
+  audio_only?: boolean;         // If true, only regenerate audio (skip breakdown)
 }
 
 export async function triggerProcessing(
