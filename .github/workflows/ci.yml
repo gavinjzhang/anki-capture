@@ -124,13 +124,16 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install root dependencies (Playwright)
+        run: npm ci
+
       - name: Install Worker dependencies
         run: cd worker && npm ci
 
       - name: Install Frontend dependencies
         run: cd frontend && npm ci
 
-      - name: Install Playwright
+      - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
       - name: Run E2E tests
