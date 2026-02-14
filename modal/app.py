@@ -12,7 +12,8 @@ import modal
 import httpx
 import json
 import os
-from typing import Optional
+from typing import Optional, Tuple, List
+from dataclasses import dataclass
 import base64
 
 app = modal.App("anki-capture")
@@ -36,6 +37,127 @@ processing_image = modal.Image.debian_slim(python_version="3.11").pip_install(
     # Required for @modal.web_endpoint functions
     "fastapi",
 )
+
+
+# ============================================================================
+# Language Registry - Single source of truth for all language configurations
+# ============================================================================
+
+@dataclass
+class LanguageConfig:
+    """Complete configuration for a single language."""
+
+    # Identity
+    code: str                                  # 2-letter code: "ru", "ar", "zh", "es"
+    name: str                                  # Display name: "Russian", "Arabic", etc.
+
+    # OCR & Detection
+    locale_variants: List[str]                 # Vision API locale variants: ["ru", "rus", "russian"]
+    script_range: Optional[Tuple[int, int]]    # Unicode range: (0x0400, 0x04FF) for Cyrillic
+
+    # TTS
+    tts_code: str                              # Google TTS code: "ru-RU", "ar-XA"
+    tts_voice_env_var: str                     # Env var for override: "GCP_TTS_RU_VOICE"
+
+    # Whisper (Audio)
+    whisper_names: List[str]                   # Whisper language variants: ["russian", "ru"]
+
+    # LLM Instructions
+    vocab_instructions: str                    # GPT prompt template for vocab breakdown
+
+
+LANGUAGE_REGISTRY = {
+    "ru": LanguageConfig(
+        code="ru",
+        name="Russian",
+        locale_variants=["ru", "rus", "russian"],
+        script_range=(0x0400, 0x04FF),  # Cyrillic
+        tts_code="ru-RU",
+        tts_voice_env_var="GCP_TTS_RU_VOICE",
+        whisper_names=["russian", "ru"],
+        vocab_instructions="""
+For each significant word, provide:
+- word: the word as it appears in the text
+- root: base/infinitive form (for verbs) or nominative singular (for nouns/adjectives)
+- meaning: English translation
+- gender: m/f/n for nouns, or null for other parts of speech
+- declension: grammatical form info (case, number, tense, aspect, etc.)
+- notes: aspect for verbs (perfective/imperfective), any irregularities, or usage notes
+
+Focus on content words. Include particles/prepositions only if they have special meaning in context.
+""",
+    ),
+    "ar": LanguageConfig(
+        code="ar",
+        name="Arabic",
+        locale_variants=["ar", "ara", "arabic"],
+        script_range=(0x0600, 0x06FF),  # Arabic
+        tts_code="ar-XA",
+        tts_voice_env_var="GCP_TTS_AR_VOICE",
+        whisper_names=["arabic", "ar"],
+        vocab_instructions="""
+For each significant word, provide:
+- word: the word as it appears (with diacritics/harakat if helpful for pronunciation)
+- root: the 3 or 4 letter root separated by dashes (e.g., ك-ت-ب)
+- meaning: English translation
+- gender: m/f for nouns, or null
+- declension: grammatical state (definite/indefinite, case, number, verb form I-X)
+- notes: verb pattern, any irregularities, or usage notes
+
+Focus on content words. Include common particles if they affect meaning.
+""",
+    ),
+    "zh": LanguageConfig(
+        code="zh",
+        name="Chinese",
+        locale_variants=["zh", "zho", "chi", "chinese"],
+        script_range=(0x4E00, 0x9FFF),  # CJK Unified Ideographs
+        tts_code="zh-CN",
+        tts_voice_env_var="GCP_TTS_ZH_VOICE",
+        whisper_names=["chinese", "zh"],
+        vocab_instructions="""
+For each significant word or phrase, provide:
+- word: the term as it appears (with characters)
+- root: pinyin with tone marks
+- meaning: English translation
+- gender: null (not applicable)
+- declension: part of speech and classifier info if relevant
+- notes: measure words, aspect particles, classifier usage, or grammar patterns
+
+Focus on content words and key particles that affect meaning.
+""",
+    ),
+    "es": LanguageConfig(
+        code="es",
+        name="Spanish",
+        locale_variants=["es", "spa", "spanish"],
+        script_range=(0x0020, 0x024F),  # Latin (includes Spanish accents)
+        tts_code="es-ES",
+        tts_voice_env_var="GCP_TTS_ES_VOICE",
+        whisper_names=["spanish", "es"],
+        vocab_instructions="""
+For each significant word, provide:
+- word: the word as it appears
+- root: lemma (infinitive for verbs, base for nouns/adjectives)
+- meaning: English translation
+- gender: m/f for nouns (or null)
+- declension: conjugation or inflection (tense, person, number, mood) as applicable
+- notes: irregularities or important usage notes
+
+Focus on content words. Include pronouns/particles only when relevant.
+""",
+    ),
+}
+
+
+def get_language_config(code: str) -> Optional[LanguageConfig]:
+    """Get language config by code."""
+    return LANGUAGE_REGISTRY.get(code)
+
+
+def get_supported_languages() -> List[str]:
+    """Get list of supported language codes."""
+    return list(LANGUAGE_REGISTRY.keys())
 
 
 @app.function(
@@ -91,6 +213,219 @@ def transcribe_audio(audio_url: str) -> dict:
         os.unlink(audio_path)
 
 
+# ============================================================================
+# OCR Text Filtering Functions
+# ============================================================================
+
+def map_locale_to_language(locale: str) -> Optional[str]:
+    """Map Vision API locale to language code using registry."""
+    if not locale:
+        return None
+
+    locale_lower = locale.lower()
+
+    # Search all languages for matching locale variant
+    for code, config in LANGUAGE_REGISTRY.items():
+        if locale_lower in [v.lower() for v in config.locale_variants]:
+            return code
+        # Try prefix match (e.g., "ru" matches "rus")
+        if locale_lower[:2] in [v[:2].lower() for v in config.locale_variants]:
+            return code
+
+    return None
+
+
+def detect_script(text: str, target_lang: str) -> bool:
+    """Check if text contains target language characters using registry."""
+    if not text.strip():
+        return False
+
+    config = get_language_config(target_lang)
+    if not config or not config.script_range:
+        return False
+
+    target_range = config.script_range
+    target_chars = sum(1 for c in text if target_range[0] <= ord(c) <= target_range[1])
+
+    # Keep if >50% target script
+    total_chars = len([c for c in text if not c.isspace()])
+    if total_chars == 0:
+        return False
+
+    return (target_chars / total_chars) > 0.5
+
+
+def is_ui_noise(text: str) -> bool:
+    """Check if segment is common English UI element."""
+    ENGLISH_UI_PATTERNS = {
+        'menu', 'back', 'home', 'login', 'logout', 'next', 'prev',
+        'share', 'save', 'cancel', 'ok', 'yes', 'no', 'settings',
+        'help', 'about', 'close', 'exit', 'more', 'less', 'view',
+        'edit', 'delete', 'add', 'search', 'filter', 'sort',
+    }
+    return text.strip().lower() in ENGLISH_UI_PATTERNS
+
+
+def reconstruct_with_lines(segments: list, filtered_indices: set) -> str:
+    """
+    Reconstruct text from filtered segments, preserving line structure.
+
+    Args:
+        segments: List of Vision API text segments (texts[1:])
+        filtered_indices: Set of indices to keep
+
+    Returns:
+        Reconstructed text with line breaks
+    """
+    if not segments or not filtered_indices:
+        return ""
+
+    # Helper to get average Y coordinate from bounding box
+    def avg_y(segment):
+        if not segment.bounding_poly or not segment.bounding_poly.vertices:
+            return 0
+        return sum(v.y for v in segment.bounding_poly.vertices) / len(segment.bounding_poly.vertices)
+
+    # Helper to get average X coordinate
+    def avg_x(segment):
+        if not segment.bounding_poly or not segment.bounding_poly.vertices:
+            return 0
+        return sum(v.x for v in segment.bounding_poly.vertices) / len(segment.bounding_poly.vertices)
+
+    # Get filtered segments with their positions
+    kept_segments = [(i, segments[i], avg_y(segments[i]), avg_x(segments[i]))
+                     for i in filtered_indices]
+
+    # Sort by Y (vertical position), then X (horizontal position)
+    kept_segments.sort(key=lambda x: (x[2], x[3]))
+
+    # Group into lines based on Y proximity
+    lines = []
+    current_line = []
+    prev_y = None
+
+    for idx, seg, y, x in kept_segments:
+        if prev_y is None or abs(y - prev_y) < 20:  # Same line (within 20 pixels)
+            current_line.append(seg.description)
+        else:  # New line
+            if current_line:
+                lines.append(' '.join(current_line))
+            current_line = [seg.description]
+        prev_y = y
+
+    # Add last line
+    if current_line:
+        lines.append(' '.join(current_line))
+
+    return '\n'.join(lines)
+
+
+def calculate_confidence(
+    total_segments: int,
+    kept_segments: int,
+    original_locale: str,
+    target_lang: str
+) -> float:
+    """
+    Calculate confidence based on filtering results.
+
+    Args:
+        total_segments: Total number of segments from OCR
+        kept_segments: Number of segments kept after filtering
+        original_locale: Original locale from Vision API
+        target_lang: Target language code
+
+    Returns:
+        Confidence score between 0.5 and 0.99
+    """
+    if total_segments == 0:
+        return 0.5
+
+    match_ratio = kept_segments / total_segments
+
+    # Boost confidence if Vision detected target language
+    locale_match = map_locale_to_language(original_locale) == target_lang
+    confidence = match_ratio * 0.8 + (0.2 if locale_match else 0.0)
+
+    # Clamp to [0.5, 0.99]
+    return max(0.5, min(0.99, confidence))
+
+
+def filter_target_language_segments(texts: list, target_lang: str) -> tuple:
+    """
+    Extract only target language segments from Vision API OCR results.
+
+    Strategy:
+    1. Use segment-level locale detection if available
+    2. Fallback to script detection (Cyrillic, Arabic, Chinese, Latin)
+    3. Filter common English UI patterns
+    4. Reconstruct text preserving line structure
+
+    Args:
+        texts: Vision API text_annotations array
+               texts[0] = full text, texts[1..N] = segments
+        target_lang: Desired language ('ru', 'ar', 'zh', 'es')
+
+    Returns:
+        (filtered_text, confidence_score)
+    """
+    from google.cloud import vision
+
+    # Need at least the full text annotation
+    if not texts or len(texts) < 1:
+        return ("", 0.5)
+
+    # If no segments, return full text
+    if len(texts) == 1:
+        return (texts[0].description.strip(), 0.5)
+
+    segments = texts[1:]  # Individual word/phrase segments
+    total_segments = len(segments)
+    filtered_indices = set()
+
+    # Filter each segment
+    for i, segment in enumerate(segments):
+        text = segment.description.strip()
+
+        if not text:
+            continue
+
+        # Stage 1: Check segment-level locale if available
+        segment_locale = getattr(segment, 'locale', None)
+        if segment_locale:
+            segment_lang = map_locale_to_language(segment_locale)
+            if segment_lang == target_lang:
+                filtered_indices.add(i)
+                continue
+
+        # Stage 2: Script detection fallback
+        if detect_script(text, target_lang):
+            filtered_indices.add(i)
+            continue
+
+        # Stage 3: Filter out UI noise (don't add to filtered_indices)
+        # This is implicit - if it's UI noise, we don't add it
+
+    # Reconstruct text from filtered segments
+    filtered_text = reconstruct_with_lines(segments, filtered_indices)
+
+    # Calculate confidence
+    original_locale = texts[0].locale or ""
+    confidence = calculate_confidence(
+        total_segments,
+        len(filtered_indices),
+        original_locale,
+        target_lang
+    )
+
+    # Log filtering results
+    print(f"OCR filtering: {total_segments} segments → {len(filtered_indices)} kept ({confidence:.2f} confidence)")
+    if len(filtered_text) < len(texts[0].description) * 0.3:
+        print(f"Warning: Aggressive filtering detected (kept {len(filtered_text)}/{len(texts[0].description)} chars)")
+
+    return (filtered_text, confidence)
+
+
 @app.function(
     image=processing_image,
     timeout=120,
@@ -134,24 +469,28 @@ def ocr_image(image_url: str) -> dict:
     if not texts:
         return {"text": "", "language": None, "confidence": 0}
     
-    full_text = texts[0].description.strip()
-    
     # Detect language from the response
-    detected_lang = None
-    if texts[0].locale:
-        lang_map = {
-            "ru": "ru", "rus": "ru", "russian": "ru",
-            "ar": "ar", "ara": "ar", "arabic": "ar",
-            "zh": "zh", "zho": "zh", "chi": "zh", "chinese": "zh",
-            "es": "es", "spa": "es", "spanish": "es",
-        }
-        locale_lower = texts[0].locale.lower()
-        detected_lang = lang_map.get(locale_lower[:2]) or lang_map.get(locale_lower)
-    
+    original_locale = texts[0].locale or ""
+    detected_lang = map_locale_to_language(original_locale)
+
+    # If language detected, apply filtering to extract only target language segments
+    if detected_lang:
+        filtered_text, confidence = filter_target_language_segments(texts, detected_lang)
+
+        # Fallback to full text if filtering returns nothing or very short result
+        if not filtered_text or len(filtered_text) < 5:
+            print(f"Warning: Filtering returned empty/short result, falling back to full text")
+            filtered_text = texts[0].description.strip()
+            confidence = 0.50  # Low confidence for unfiltered fallback
+    else:
+        # No language detected, use full text
+        filtered_text = texts[0].description.strip()
+        confidence = 0.50
+
     return {
-        "text": full_text,
+        "text": filtered_text,
         "language": detected_lang,
-        "confidence": 0.85,
+        "confidence": confidence,
     }
 
 
@@ -167,46 +506,21 @@ def generate_breakdown(
 ) -> dict:
     """Generate translation, transliteration, and grammar/vocab breakdown."""
     from openai import OpenAI
-    
+
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise Exception("OPENAI_API_KEY not configured")
-    
+
     client = OpenAI(api_key=api_key)
-    
-    lang_name = {
-        "ru": "Russian",
-        "ar": "Arabic",
-        "zh": "Chinese",
-        "es": "Spanish",
-    }.get(language, language)
-    
-    # Language-specific prompt adjustments
-    if language == "ru":
-        vocab_instructions = """
-For each significant word, provide:
-- word: the word as it appears in the text
-- root: base/infinitive form (for verbs) or nominative singular (for nouns/adjectives)
-- meaning: English translation
-- gender: m/f/n for nouns, or null for other parts of speech
-- declension: grammatical form info (case, number, tense, aspect, etc.)
-- notes: aspect for verbs (perfective/imperfective), any irregularities, or usage notes
 
-Focus on content words. Include particles/prepositions only if they have special meaning in context.
-"""
-    elif language == "ar":  # Arabic
-        vocab_instructions = """
-For each significant word, provide:
-- word: the word as it appears (with diacritics/harakat if helpful for pronunciation)
-- root: the 3 or 4 letter root separated by dashes (e.g., ك-ت-ب)
-- meaning: English translation
-- gender: m/f for nouns, or null
-- declension: grammatical state (definite/indefinite, case, number, verb form I-X)
-- notes: verb pattern, any irregularities, or usage notes
+    # Get language config from registry
+    config = get_language_config(language)
+    if not config:
+        raise ValueError(f"Unsupported language: {language}")
 
-Focus on content words. Include common particles if they affect meaning.
-"""
-    
+    lang_name = config.name
+    vocab_instructions = config.vocab_instructions
+
     prompt = f"""Analyze this {lang_name} text and provide a complete breakdown for language learning.
 
 Text: {source_text}
@@ -259,10 +573,10 @@ Respond ONLY with valid JSON. No markdown, no code blocks, no extra text."""
     secrets=[modal.Secret.from_name("anki-capture-secrets")],
 )
 async def generate_tts(text: str, language: str) -> bytes:
-    """Generate TTS audio using Google Cloud Text-to-Speech (Standard voices)."""
+    """Generate TTS audio using Google Cloud Text-to-Speech."""
     from google.cloud import texttospeech
     from google.oauth2 import service_account
-    
+
     credentials_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
     if not credentials_json:
         raise Exception("GOOGLE_CREDENTIALS_JSON not configured")
@@ -271,28 +585,13 @@ async def generate_tts(text: str, language: str) -> bytes:
     )
     client = texttospeech.TextToSpeechClient(credentials=credentials)
 
-    # Determine language code
-    if language == "ru":
-        lang_code = "ru-RU"
-    elif language == "ar":
-        lang_code = "ar-XA"
-    elif language == "zh":
-        lang_code = "zh-CN"
-    elif language == "es":
-        lang_code = "es-ES"
-    else:
-        lang_code = "en-US"
+    # Get language config from registry
+    config = get_language_config(language)
+    if not config:
+        raise ValueError(f"Unsupported language for TTS: {language}")
 
-    # Optional overrides via secrets
-    override_name = None
-    if language == "ru":
-        override_name = os.environ.get("GCP_TTS_RU_VOICE")
-    elif language == "ar":
-        override_name = os.environ.get("GCP_TTS_AR_VOICE")
-    elif language == "zh":
-        override_name = os.environ.get("GCP_TTS_ZH_VOICE")
-    elif language == "es":
-        override_name = os.environ.get("GCP_TTS_ES_VOICE")
+    lang_code = config.tts_code
+    override_name = os.environ.get(config.tts_voice_env_var)
 
     # List voices and filter by language
     voices = client.list_voices().voices
@@ -349,10 +648,12 @@ async def process_upload(
             result = transcribe_audio.remote(file_url)
             extracted_text = result["text"]
             detected_language = language or result["language"]
-            # Map whisper language codes
-            lang_map = {"russian": "ru", "arabic": "ar"}
-            if detected_language in lang_map:
-                detected_language = lang_map[detected_language]
+            # Map whisper language codes using registry
+            if detected_language:
+                for code, config in LANGUAGE_REGISTRY.items():
+                    if detected_language.lower() in [w.lower() for w in config.whisper_names]:
+                        detected_language = code
+                        break
             confidence = result["confidence"]
             
         elif source_type == "image":
@@ -457,31 +758,7 @@ async def trigger(data: dict) -> dict:
     phrase_id = data.get("phrase_id")
     if not phrase_id:
         return {"error": "Missing phrase_id", "status": "error"}
-    
-    elif language == "zh":  # Chinese
-        vocab_instructions = """
-For each significant word or phrase, provide:
-- word: the term as it appears (with characters)
-- root: pinyin with tone marks
-- meaning: English translation
-- gender: null (not applicable) 
-- declension: part of speech and classifier info if relevant
-- notes: measure words, aspect particles, classifier usage, or grammar patterns
 
-Focus on content words and key particles that affect meaning.
-"""
-    elif language == "es":  # Spanish
-        vocab_instructions = """
-For each significant word, provide:
-- word: the word as it appears
-- root: lemma (infinitive for verbs, base for nouns/adjectives)
-- meaning: English translation
-- gender: m/f for nouns (or null)
-- declension: conjugation or inflection (tense, person, number, mood) as applicable
-- notes: irregularities or important usage notes
-
-Focus on content words. Include pronouns/particles only when relevant.
-"""
     print(f"Received trigger for {phrase_id}")
     
     await process_upload.spawn.aio(
