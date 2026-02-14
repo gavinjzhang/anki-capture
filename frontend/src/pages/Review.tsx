@@ -120,21 +120,21 @@ function VocabTable({
   )
 }
 
-function PhraseCard({ 
-  phrase, 
-  onUpdate, 
-  onApprove, 
+function PhraseCard({
+  phrase,
+  onUpdate,
+  onApprove,
   onDelete,
   onRegenerateAudio,
   regenerating,
   audioBust,
   onDirtyChange,
-}: { 
+}: {
   phrase: Phrase;
   onUpdate: (updates: Partial<Phrase>) => Promise<void>;
   onApprove: () => Promise<void>;
   onDelete: () => Promise<void>;
-  onRegenerateAudio: (text: string, language: 'ru' | 'ar' | 'zh' | 'es' | null) => Promise<void>;
+  onRegenerateAudio: (text: string, language: 'ru' | 'ar' | 'zh' | 'es' | null, hasUnsavedChanges: boolean, saveCallback: () => Promise<void>) => Promise<void>;
   regenerating: boolean;
   audioBust?: string;
   onDirtyChange: (id: string, dirty: boolean) => void;
@@ -254,14 +254,19 @@ function PhraseCard({
                 <span className="text-zinc-500 text-sm">No audio</span>
               )}
               <button
-                onClick={() => onRegenerateAudio(localPhrase.source_text || '', localPhrase.detected_language)}
+                onClick={() => onRegenerateAudio(
+                  localPhrase.source_text || '',
+                  localPhrase.detected_language,
+                  hasChanges,
+                  handleSave
+                )}
                 disabled={regenerating}
                 className={`px-3 py-2 text-sm rounded-lg transition-colors flex items-center justify-center ${
-                  regenerating 
-                    ? 'bg-zinc-800 text-zinc-400 cursor-not-allowed' 
+                  regenerating
+                    ? 'bg-zinc-800 text-zinc-400 cursor-not-allowed'
                     : 'bg-zinc-800 hover:bg-zinc-700'
                 }`}
-                title="Regenerate audio from source text"
+                title={hasChanges ? "Auto-save changes and regenerate audio" : "Regenerate audio from source text"}
                 aria-busy={regenerating}
               >
                 {regenerating ? (
@@ -390,7 +395,24 @@ export default function ReviewPage() {
     })
   }
 
-  const handleRegenerateAudio = async (id: string, text: string, lang: 'ru' | 'ar' | 'zh' | 'es' | null) => {
+  const handleRegenerateAudio = async (
+    id: string,
+    text: string,
+    lang: 'ru' | 'ar' | 'zh' | 'es' | null,
+    hasUnsavedChanges: boolean,
+    saveCallback: () => Promise<void>
+  ) => {
+    // Auto-save changes before regenerating
+    if (hasUnsavedChanges) {
+      try {
+        await saveCallback()
+      } catch (err) {
+        console.error('Failed to save before regenerating:', err)
+        alert('Failed to save changes. Please save manually before regenerating.')
+        return
+      }
+    }
+
     // Optimistically show progress and prevent multiple taps
     setRegeneratingIds(prev => new Set(prev).add(id))
     try {
@@ -497,7 +519,9 @@ export default function ReviewPage() {
               onUpdate={(updates) => handleUpdate(phrase.id, updates)}
               onApprove={() => handleApprove(phrase.id)}
               onDelete={() => handleDelete(phrase.id)}
-              onRegenerateAudio={(text, language) => handleRegenerateAudio(phrase.id, text, language)}
+              onRegenerateAudio={(text, language, hasUnsavedChanges, saveCallback) =>
+                handleRegenerateAudio(phrase.id, text, language, hasUnsavedChanges, saveCallback)
+              }
               regenerating={regeneratingIds.has(phrase.id)}
               audioBust={audioBust[phrase.id]}
               onDirtyChange={handleDirtyChange}
