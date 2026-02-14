@@ -621,11 +621,15 @@ async def generate_tts_elevenlabs(text: str, language: str) -> bytes:
     # ElevenLabs uses 2-letter codes: ka, ru, ar, zh, es
     lang_code_2letter = config.code  # 'ka', 'ru', 'ar', 'zh', 'es'
 
-    print(f"ElevenLabs TTS: lang={language}, code={lang_code_2letter}")
+    # Allow voice override via environment variable, otherwise use default multilingual voice
+    # Default voice: "pNInz6obpgDQGcFmaJgB" (Adam - multilingual)
+    voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "pNInz6obpgDQGcFmaJgB")
 
-    # Use multilingual v2 model with automatic voice selection
-    # ElevenLabs will pick an appropriate voice for the language
+    print(f"ElevenLabs TTS: lang={language}, code={lang_code_2letter}, voice_id={voice_id}")
+
+    # Use multilingual v2 model
     audio_generator = client.text_to_speech.convert(
+        voice_id=voice_id,
         text=text,
         model_id="eleven_multilingual_v2",
         language_code=lang_code_2letter,
