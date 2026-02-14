@@ -6,6 +6,9 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
 
+  /* Global setup for Clerk authentication */
+  globalSetup: require.resolve("./e2e/global-setup"),
+
   /* Run tests in files in parallel */
   fullyParallel: true,
 

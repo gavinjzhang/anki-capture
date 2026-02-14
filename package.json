@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/gavinjzhang/anki-capture#readme",
   "devDependencies": {
+    "@clerk/testing": "^1.13.35",
     "@playwright/test": "^1.58.2"
   }
 }

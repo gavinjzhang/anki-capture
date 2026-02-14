@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { setupClerkTestingToken } from "@clerk/testing/playwright";
 
 /**
  * Smoke test: Critical user flow
@@ -12,6 +13,10 @@ import { test, expect } from "@playwright/test";
  */
 
 test.describe("Critical User Flow", () => {
+  // Setup Clerk authentication before each test
+  test.beforeEach(async ({ page }) => {
+    await setupClerkTestingToken({ page });
+  });
   test("text upload → review → approve → export", async ({ page }) => {
     // Navigate to app
     await page.goto("/");
