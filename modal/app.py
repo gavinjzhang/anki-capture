@@ -620,7 +620,7 @@ async def generate_tts(text: str, language: str) -> bytes:
         raise ValueError(f"Unsupported language for TTS: {language}")
 
     lang_code = config.tts_code
-    override_name = os.environ.get(config.tts_voice_env_var)
+    override_name = os.environ.get(config.tts_voice_env_var, "").strip() or None
 
     # List voices and filter by language
     voices = client.list_voices().voices
