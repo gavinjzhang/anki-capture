@@ -24,13 +24,26 @@ export async function handleGetFile(
   }
 
   if (!authorized) {
-    const hasBearer = request.headers.get('Authorization')?.startsWith('Bearer ');
-    const callerEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
-    if (hasBearer || callerEmail) {
-      const userId = await getUserId(request, env);
-      const isLegacy = decodedKey.startsWith('original/') || decodedKey.startsWith('audio/');
-      if (!isLegacy && decodedKey.startsWith(`${userId}/`)) {
-        authorized = true;
+    // Check for Modal's auth header
+    const modalSecret = request.headers.get('X-Modal-Secret');
+    console.log('File access attempt', {
+      key: decodedKey.slice(0, 50),
+      hasModalSecret: !!modalSecret,
+      modalSecretLength: modalSecret?.length,
+      expectedSecretLength: env.MODAL_WEBHOOK_SECRET?.length
+    });
+    if (modalSecret && modalSecret === env.MODAL_WEBHOOK_SECRET) {
+      authorized = true;
+    } else {
+      // Check for user authentication
+      const hasBearer = request.headers.get('Authorization')?.startsWith('Bearer ');
+      const callerEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
+      if (hasBearer || callerEmail) {
+        const userId = await getUserId(request, env);
+        const isLegacy = decodedKey.startsWith('original/') || decodedKey.startsWith('audio/');
+        if (!isLegacy && decodedKey.startsWith(`${userId}/`)) {
+          authorized = true;
+        }
       }
     }
   }

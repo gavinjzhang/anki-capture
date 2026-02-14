@@ -1,33 +1,41 @@
 import { useState, useEffect } from 'react'
+import { useAuth } from '@clerk/clerk-react'
 import { listPhrases, updatePhrase, deletePhrase as apiDeletePhrase, Phrase } from '../lib/api'
 import { useAdaptivePolling } from '../lib/useAdaptivePolling'
 
 type StatusFilter = 'all' | 'processing' | 'pending_review' | 'approved' | 'exported'
 
 export default function LibraryPage() {
+  const { isLoaded } = useAuth()
   const [phrases, setPhrases] = useState<Phrase[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<StatusFilter>('all')
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [revertingId, setRevertingId] = useState<string | null>(null)
 
-  const loadPhrases = async () => {
-    setLoading(true)
+  const loadPhrases = async (showLoadingSpinner = true) => {
+    if (showLoadingSpinner) {
+      setLoading(true)
+    }
     try {
       const status = filter === 'all' ? undefined : filter
       const { phrases } = await listPhrases(status)
       setPhrases(phrases)
     } finally {
-      setLoading(false)
+      if (showLoadingSpinner) {
+        setLoading(false)
+      }
     }
   }
 
   // Adaptive polling: 5s when processing jobs exist, 60s when idle
+  // Wait for Clerk to be ready before starting polls
   const { pollNow } = useAdaptivePolling({
-    onPoll: loadPhrases,
+    onPoll: () => loadPhrases(false), // Don't show spinner during background polling
     shouldPollFast: () => phrases.some(p => p.status === 'processing'),
     fastInterval: 5000,   // 5 seconds when jobs are processing
     slowInterval: 60000,  // 60 seconds when idle (less critical than Review page)
+    enabled: isLoaded, // Wait for Clerk to load
   })
 
   // Reload when filter changes

@@ -26,6 +26,7 @@ whisper_image = (
         "openai-whisper",
         "torch",
         "torchaudio",
+        "httpx",  # Required to download audio files from signed URLs
     )
 )
 
@@ -173,9 +174,13 @@ def transcribe_audio(audio_url: str) -> dict:
     import tempfile
     
     # Download audio file with retries
+    # Use webhook secret for authentication
+    webhook_secret = os.environ.get("WEBHOOK_SECRET", "")
+    headers = {"X-Modal-Secret": webhook_secret} if webhook_secret else {}
+
     for attempt in range(3):
         try:
-            response = httpx.get(audio_url, timeout=60, follow_redirects=True)
+            response = httpx.get(audio_url, headers=headers, timeout=60, follow_redirects=True)
             response.raise_for_status()
             break
         except Exception as e:
@@ -438,9 +443,13 @@ def ocr_image(image_url: str) -> dict:
     from google.oauth2 import service_account
     
     # Download image with retries
+    # Use webhook secret for authentication
+    webhook_secret = os.environ.get("WEBHOOK_SECRET", "")
+    headers = {"X-Modal-Secret": webhook_secret} if webhook_secret else {}
+
     for attempt in range(3):
         try:
-            response = httpx.get(image_url, timeout=60, follow_redirects=True)
+            response = httpx.get(image_url, headers=headers, timeout=60, follow_redirects=True)
             response.raise_for_status()
             break
         except Exception as e:

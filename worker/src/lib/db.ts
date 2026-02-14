@@ -264,18 +264,21 @@ export async function setCurrentJobForUser(env: Env, userId: string, id: string,
 
 export async function sweepProcessingTimeouts(env: Env, timeoutMs: number): Promise<number> {
   const cutoff = Date.now() - timeoutMs;
-  // Move stuck processing to pending_review with timeout note; keep existing notes
+  // Mark stuck processing jobs as failed so they can be retried
   const stmt = env.DB.prepare(`
-    UPDATE phrases SET 
-      status = 'pending_review', 
-      grammar_notes = COALESCE(grammar_notes || '\n', '') || '' || '⚠️ Timed out after processing',
-      last_error = 'Timed out'
-    WHERE status = 'processing' 
+    UPDATE phrases SET
+      status = 'failed',
+      last_error = 'Job timed out - click Retry to reprocess',
+      current_job_id = NULL
+    WHERE status = 'processing'
       AND COALESCE(job_started_at, created_at) < ?
   `).bind(cutoff);
-  await stmt.run();
-  // D1 doesn't return changes count via this API; return -1 as unknown
-  return -1;
+  const result = await stmt.run();
+  const count = result.meta?.changes || 0;
+  if (count > 0) {
+    console.log(`Cleaned up ${count} stuck job(s) older than ${timeoutMs}ms`);
+  }
+  return count;
 }
 
 export async function markPhrasesExported(env: Env, ids: string[]): Promise<void> {

@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useAuth } from '@clerk/clerk-react'
 import {
   listPhrases,
   updatePhrase,
@@ -398,6 +399,7 @@ function PhraseCard({
 }
 
 export default function ReviewPage() {
+  const { isLoaded } = useAuth()
   const [phrases, setPhrases] = useState<Phrase[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -409,25 +411,39 @@ export default function ReviewPage() {
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set())
   const toast = useToast()
 
+  // Prevent race conditions: track request sequence number
+  const loadSequenceRef = useRef(0)
+
   const loadPhrases = useCallback(async () => {
+    const currentSeq = ++loadSequenceRef.current
     try {
       const { phrases } = await listPhrases('pending_review')
-      setPhrases(phrases)
+      // Only update if this is still the latest request
+      if (currentSeq === loadSequenceRef.current) {
+        setPhrases(phrases)
+        setError(null) // Clear any previous errors
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load phrases')
+      // Only update error if this is still the latest request
+      if (currentSeq === loadSequenceRef.current) {
+        setError(err instanceof Error ? err.message : 'Failed to load phrases')
+      }
     } finally {
-      setLoading(false)
+      if (currentSeq === loadSequenceRef.current) {
+        setLoading(false)
+      }
     }
   }, [])
 
   // Adaptive polling: 3s when processing jobs exist, 30s when idle
   // Pauses while editing to avoid clobbering unsaved changes
+  // Wait for Clerk to be ready before starting polls
   const { pollNow } = useAdaptivePolling({
     onPoll: loadPhrases,
     shouldPollFast: () => phrases.some(p => p.status === 'processing'),
     fastInterval: 3000,   // 3 seconds when jobs are processing
     slowInterval: 30000,  // 30 seconds when idle (AWS CloudFormation style)
-    enabled: dirtyIds.size === 0, // Pause while editing
+    enabled: isLoaded && dirtyIds.size === 0, // Wait for Clerk to load and pause while editing
   })
 
   const handleUpdate = async (id: string, updates: Partial<Phrase>) => {

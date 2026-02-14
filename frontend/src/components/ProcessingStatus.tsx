@@ -1,10 +1,15 @@
 import { useState, useEffect } from 'react'
+import { useAuth } from '@clerk/clerk-react'
 import { listPhrases } from '../lib/api'
 
 export default function ProcessingStatus() {
+  const { isLoaded } = useAuth()
   const [processingCount, setProcessingCount] = useState(0)
 
   useEffect(() => {
+    // Wait for Clerk to be ready before making API calls
+    if (!isLoaded) return
+
     const checkProcessing = async () => {
       try {
         const { phrases } = await listPhrases('processing')
@@ -17,7 +22,7 @@ export default function ProcessingStatus() {
     checkProcessing()
     const interval = setInterval(checkProcessing, 5000)
     return () => clearInterval(interval)
-  }, [])
+  }, [isLoaded])
 
   if (processingCount === 0) return null
 

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useAuth } from '@clerk/clerk-react'
 import JSZip from 'jszip'
 import { getExportPreview, getExportData, markExported, getFileUrl } from '../lib/api'
 
@@ -8,6 +9,7 @@ interface ExportPreview {
 }
 
 export default function ExportPage() {
+  const { isLoaded } = useAuth()
   const [preview, setPreview] = useState<ExportPreview | null>(null)
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
@@ -26,8 +28,10 @@ export default function ExportPage() {
   }
 
   useEffect(() => {
+    // Wait for Clerk to be ready before making API calls
+    if (!isLoaded) return
     loadPreview()
-  }, [])
+  }, [isLoaded])
 
   const handleExport = async () => {
     setExporting(true)

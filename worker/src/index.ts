@@ -128,8 +128,8 @@ export default {
   },
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
     try {
-      // Mark jobs stuck in processing for >20 minutes as pending_review
-      await sweepProcessingTimeouts(env, 20 * 60 * 1000);
+      // Mark jobs stuck in processing for >10 minutes as failed
+      await sweepProcessingTimeouts(env, 10 * 60 * 1000);
     } catch (err) {
       console.error('Scheduled sweep failed', err);
     }
