@@ -31,7 +31,7 @@ database_id = "local"
 
 # Production
 [env.production]
-vars = { ENVIRONMENT = "production", CLERK_JWT_ISSUER = "", MODAL_ENDPOINT = "https://gavinjzhang--anki-capture-trigger.modal.run", ALLOWED_ORIGINS = "https://anki-capture.pages.dev/" }  # Set to your production frontend URL
+vars = { ENVIRONMENT = "production", CLERK_JWT_ISSUER = "", MODAL_ENDPOINT = "https://gavinjzhang--anki-capture-trigger.modal.run", ALLOWED_ORIGINS = "*" }  # Set to your production frontend URL
 
 [[env.production.d1_databases]]
 binding = "DB"
