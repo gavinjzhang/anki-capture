@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { uploadFile, uploadText } from '../lib/api'
 
 type InputMode = 'image' | 'audio' | 'text'
+type AudioInputMode = 'upload' | 'record'
 
 export default function UploadPage() {
   const [mode, setMode] = useState<InputMode>('image')
@@ -14,6 +15,21 @@ export default function UploadPage() {
   const [recentUploads, setRecentUploads] = useState<string[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dropRef = useRef<HTMLDivElement>(null)
+
+  // Audio recording state
+  const [audioInputMode, setAudioInputMode] = useState<AudioInputMode>('upload')
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
+  const [recordingTime, setRecordingTime] = useState(0)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioStreamRef = useRef<MediaStream | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const animationFrameRef = useRef<number | null>(null)
+  const timerIntervalRef = useRef<number | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const audioPreviewRef = useRef<HTMLAudioElement>(null)
 
   const resetProgress = () => {
     setUploadTotal(0)
@@ -59,10 +75,10 @@ export default function UploadPage() {
   const handleTextSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!text.trim()) return
-    
+
     setUploading(true)
     setMessage(null)
-    
+
     try {
       const result = await uploadText(text.trim(), language)
       setRecentUploads(prev => [result.id, ...prev.slice(0, 4)])
@@ -74,6 +90,206 @@ export default function UploadPage() {
       setUploading(false)
     }
   }
+
+  // Audio recording functions
+  const MAX_RECORDING_TIME = 30 // seconds
+
+  const drawWaveform = useCallback(() => {
+    const canvas = canvasRef.current
+    const analyser = analyserRef.current
+    if (!canvas || !analyser) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const bufferLength = analyser.frequencyBinCount
+    const dataArray = new Uint8Array(bufferLength)
+
+    const draw = () => {
+      animationFrameRef.current = requestAnimationFrame(draw)
+      analyser.getByteTimeDomainData(dataArray)
+
+      ctx.fillStyle = 'rgb(24, 24, 27)' // zinc-900
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+      ctx.lineWidth = 2
+      ctx.strokeStyle = 'rgb(16, 185, 129)' // emerald-500
+      ctx.beginPath()
+
+      const sliceWidth = canvas.width / bufferLength
+      let x = 0
+
+      for (let i = 0; i < bufferLength; i++) {
+        const v = dataArray[i] / 128.0
+        const y = (v * canvas.height) / 2
+
+        if (i === 0) {
+          ctx.moveTo(x, y)
+        } else {
+          ctx.lineTo(x, y)
+        }
+
+        x += sliceWidth
+      }
+
+      ctx.lineTo(canvas.width, canvas.height / 2)
+      ctx.stroke()
+    }
+
+    draw()
+  }, [])
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        }
+      })
+
+      audioStreamRef.current = stream
+
+      // Set up audio context for waveform visualization
+      const audioContext = new AudioContext()
+      audioContextRef.current = audioContext
+      const source = audioContext.createMediaStreamSource(stream)
+      const analyser = audioContext.createAnalyser()
+      analyser.fftSize = 2048
+      source.connect(analyser)
+      analyserRef.current = analyser
+
+      // Start waveform visualization
+      drawWaveform()
+
+      // Set up MediaRecorder
+      const recorder = new MediaRecorder(stream)
+      const chunks: Blob[] = []
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunks.push(e.data)
+        }
+      }
+
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' })
+        setRecordedBlob(blob)
+
+        // Stop waveform animation
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current)
+        }
+      }
+
+      recorder.start()
+      mediaRecorderRef.current = recorder
+      setIsRecording(true)
+      setRecordingTime(0)
+      setRecordedBlob(null)
+      setMessage(null)
+
+      // Start timer
+      timerIntervalRef.current = window.setInterval(() => {
+        setRecordingTime(prev => {
+          const newTime = prev + 1
+          if (newTime >= MAX_RECORDING_TIME) {
+            stopRecording()
+          }
+          return newTime
+        })
+      }, 1000)
+
+    } catch (err) {
+      console.error('Failed to start recording:', err)
+      setMessage({
+        type: 'error',
+        text: 'Failed to access microphone. Please grant permission and try again.'
+      })
+    }
+  }
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop()
+      setIsRecording(false)
+    }
+
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach(track => track.stop())
+    }
+
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current)
+      timerIntervalRef.current = null
+    }
+
+    if (audioContextRef.current) {
+      audioContextRef.current.close()
+      audioContextRef.current = null
+    }
+
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
+      animationFrameRef.current = null
+    }
+  }
+
+  const resetRecording = () => {
+    setRecordedBlob(null)
+    setRecordingTime(0)
+    setIsPlaying(false)
+  }
+
+  const submitRecording = async () => {
+    if (!recordedBlob) return
+
+    const file = new File(
+      [recordedBlob],
+      `recording-${Date.now()}.webm`,
+      { type: 'audio/webm' }
+    )
+
+    await handleFiles([file])
+    resetRecording()
+  }
+
+  const togglePlayback = () => {
+    const audio = audioPreviewRef.current
+    if (!audio || !recordedBlob) return
+
+    if (isPlaying) {
+      audio.pause()
+      setIsPlaying(false)
+    } else {
+      if (!audio.src || audio.src === window.location.href) {
+        audio.src = URL.createObjectURL(recordedBlob)
+      }
+      audio.play()
+      setIsPlaying(true)
+    }
+  }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopRecording()
+      if (audioPreviewRef.current?.src) {
+        URL.revokeObjectURL(audioPreviewRef.current.src)
+      }
+    }
+  }, [])
+
+  // Handle audio playback end
+  useEffect(() => {
+    const audio = audioPreviewRef.current
+    if (!audio) return
+
+    const handleEnded = () => setIsPlaying(false)
+    audio.addEventListener('ended', handleEnded)
+    return () => audio.removeEventListener('ended', handleEnded)
+  }, [])
 
   // Drag & Drop handlers for the drop area
   const onDrop = useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
@@ -144,6 +360,35 @@ export default function UploadPage() {
         ))}
       </div>
 
+      {/* Audio input mode toggle (only for audio mode) */}
+      {mode === 'audio' && (
+        <div className="flex gap-2 p-1 bg-zinc-900 rounded-lg w-fit">
+          {[
+            { id: 'upload' as const, icon: '📁', label: 'Upload File' },
+            { id: 'record' as const, icon: '🔴', label: 'Record' },
+          ].map(({ id, icon, label }) => (
+            <button
+              key={id}
+              onClick={() => {
+                setAudioInputMode(id)
+                if (id === 'upload') {
+                  resetRecording()
+                  stopRecording()
+                }
+              }}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                audioInputMode === id
+                  ? 'bg-zinc-800 text-zinc-100 shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <span className="mr-2">{icon}</span>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Upload area */}
       <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-8">
         {mode === 'text' ? (
@@ -175,7 +420,7 @@ export default function UploadPage() {
                 ))}
               </div>
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-zinc-300 mb-2">
                 Phrase
@@ -189,7 +434,7 @@ export default function UploadPage() {
                 dir={language === 'ar' ? 'rtl' : 'ltr'}
               />
             </div>
-            
+
             <button
               type="submit"
               disabled={!text.trim() || uploading}
@@ -198,7 +443,100 @@ export default function UploadPage() {
               {uploading ? 'Processing...' : 'Submit'}
             </button>
           </form>
+        ) : mode === 'audio' && audioInputMode === 'record' ? (
+          // Audio recording interface
+          <div className="space-y-6">
+            {/* Waveform visualization */}
+            <div className="relative">
+              <canvas
+                ref={canvasRef}
+                width={600}
+                height={120}
+                className="w-full h-[120px] bg-zinc-950 rounded-lg border border-zinc-800"
+              />
+              {!isRecording && !recordedBlob && (
+                <div className="absolute inset-0 flex items-center justify-center text-zinc-500 text-sm">
+                  Ready to record
+                </div>
+              )}
+            </div>
+
+            {/* Timer */}
+            <div className="text-center">
+              <div className={`text-3xl font-mono transition-colors ${
+                recordingTime >= MAX_RECORDING_TIME - 5 && isRecording
+                  ? 'text-red-400 animate-pulse'
+                  : 'text-zinc-300'
+              }`}>
+                {Math.floor(recordingTime / 60)}:{String(recordingTime % 60).padStart(2, '0')}
+              </div>
+              <div className="text-xs text-zinc-500 mt-1">
+                {isRecording
+                  ? recordingTime >= MAX_RECORDING_TIME - 5
+                    ? `Ending soon... (max ${MAX_RECORDING_TIME}s)`
+                    : `Recording... (max ${MAX_RECORDING_TIME}s)`
+                  : recordedBlob ? 'Recording complete' : 'Not recording'}
+              </div>
+            </div>
+
+            {/* Controls */}
+            <div className="flex gap-3 justify-center">
+              {!recordedBlob ? (
+                // Recording controls
+                <>
+                  {!isRecording ? (
+                    <button
+                      onClick={startRecording}
+                      disabled={uploading}
+                      className="px-6 py-3 bg-red-600 hover:bg-red-500 disabled:bg-zinc-700 disabled:text-zinc-400 text-white font-medium rounded-lg transition-colors flex items-center gap-2"
+                    >
+                      <span className="text-xl">⏺️</span>
+                      Start Recording
+                    </button>
+                  ) : (
+                    <button
+                      onClick={stopRecording}
+                      className="px-6 py-3 bg-zinc-700 hover:bg-zinc-600 text-white font-medium rounded-lg transition-colors flex items-center gap-2"
+                    >
+                      <span className="text-xl">⏹️</span>
+                      Stop
+                    </button>
+                  )}
+                </>
+              ) : (
+                // Playback controls
+                <>
+                  <button
+                    onClick={togglePlayback}
+                    className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <span className="text-xl">{isPlaying ? '⏸️' : '▶️'}</span>
+                    {isPlaying ? 'Pause' : 'Play Preview'}
+                  </button>
+                  <button
+                    onClick={resetRecording}
+                    className="px-6 py-3 bg-zinc-700 hover:bg-zinc-600 text-white font-medium rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <span className="text-xl">🔄</span>
+                    Re-record
+                  </button>
+                  <button
+                    onClick={submitRecording}
+                    disabled={uploading}
+                    className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:text-zinc-400 text-white font-medium rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <span className="text-xl">✓</span>
+                    {uploading ? 'Uploading...' : 'Submit'}
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Hidden audio element for preview */}
+            <audio ref={audioPreviewRef} className="hidden" />
+          </div>
         ) : (
+          // File upload interface (image or audio upload mode)
           <label className={`block ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
             <input
               ref={fileInputRef}
