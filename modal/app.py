@@ -644,6 +644,12 @@ async def generate_tts_elevenlabs(text: str, language: str) -> bytes:
     return audio_data
 
 
+@app.function(
+    image=processing_image,
+    timeout=60,
+    retries=2,
+    secrets=[modal.Secret.from_name("anki-capture-secrets")],
+)
 async def generate_tts(text: str, language: str) -> Optional[bytes]:
     """
     Generate TTS audio using Google Cloud Text-to-Speech.
