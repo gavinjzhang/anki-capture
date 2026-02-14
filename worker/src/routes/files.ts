@@ -36,11 +36,7 @@ export async function handleGetFile(
   }
 
   if (!authorized) {
-    if (!env.FILE_URL_SIGNING_SECRET) {
-      // Legacy fallback when signing is not configured
-    } else {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
   const object = await getFile(env, decodedKey);
   

@@ -10,6 +10,7 @@ export interface Env {
   MAX_ORPHAN_SWEEP?: string; // optional, default 50 per run
   MIN_ORPHAN_AGE_MS?: string; // optional, default 24h
   FILE_URL_SIGNING_SECRET?: string; // HMAC secret for signed /api/files URLs
+  ALLOWED_ORIGINS?: string; // Comma-separated list of allowed CORS origins
 }
 
 export type SourceType = 'image' | 'audio' | 'text';

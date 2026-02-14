@@ -55,11 +55,24 @@ const routes: Route[] = [
 
 ];
 
-function corsHeaders(): HeadersInit {
+function corsHeaders(env: Env, requestOrigin?: string | null): HeadersInit {
+  const allowedOrigins = env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) || [];
+
+  // For development, allow localhost origins
+  if (env.ENVIRONMENT === 'development') {
+    allowedOrigins.push('http://localhost:5173', 'http://localhost:8787', 'http://127.0.0.1:5173');
+  }
+
+  // Determine if the request origin is allowed
+  const origin = requestOrigin && allowedOrigins.includes(requestOrigin)
+    ? requestOrigin
+    : (allowedOrigins.length > 0 ? allowedOrigins[0] : '*');
+
   return {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Credentials': 'true',
   };
 }
 
@@ -70,9 +83,11 @@ export default {
     const headersClone = new Headers(request.headers);
     headersClone.set('x-request-id', requestId);
     const reqWithId = new Request(request, { headers: headersClone });
+    const origin = request.headers.get('Origin');
+
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders() });
+      return new Response(null, { headers: corsHeaders(env, origin) });
     }
     
     const url = new URL(request.url);
@@ -86,12 +101,12 @@ export default {
       if (match) {
         try {
           const response = await route.handler(reqWithId, env, ...match.slice(1));
-          
+
           // Add CORS headers to response
           const headers = new Headers(response.headers);
-          Object.entries(corsHeaders()).forEach(([k, v]) => headers.set(k, v));
+          Object.entries(corsHeaders(env, origin)).forEach(([k, v]) => headers.set(k, v));
           headers.set('x-request-id', requestId);
-          
+
           return new Response(response.body, {
             status: response.status,
             headers,
@@ -100,15 +115,15 @@ export default {
           console.error('Route error', { request_id: requestId, path, error: error instanceof Error ? error.message : String(error) });
           return Response.json(
             { error: error instanceof Error ? error.message : 'Internal error' },
-            { status: 500, headers: corsHeaders() }
+            { status: 500, headers: corsHeaders(env, origin) }
           );
         }
       }
     }
-    
+
     return Response.json(
       { error: 'Not found' },
-      { status: 404, headers: corsHeaders() }
+      { status: 404, headers: corsHeaders(env, origin) }
     );
   },
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {

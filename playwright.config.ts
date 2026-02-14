@@ -62,6 +62,10 @@ export default defineConfig({
       url: "http://localhost:5173",
       timeout: 120 * 1000,
       reuseExistingServer: !process.env.CI,
+      // Pass Clerk key to frontend dev server
+      env: {
+        VITE_CLERK_PUBLISHABLE_KEY: process.env.VITE_CLERK_PUBLISHABLE_KEY || process.env.CLERK_PUBLISHABLE_KEY || '',
+      },
     },
   ],
 });

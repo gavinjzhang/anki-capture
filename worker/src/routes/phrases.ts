@@ -1,16 +1,17 @@
 import { Env, PhraseStatus, Phrase, VocabItem } from '../types';
-import { 
-  getPhraseForUser, 
-  listPhrasesForUser, 
-  updatePhraseForUser, 
-  deletePhraseForUser, 
-  getPhrase 
+import {
+  getPhraseForUser,
+  listPhrasesForUser,
+  updatePhraseForUser,
+  deletePhraseForUser,
+  getPhrase
 } from '../lib/db';
 import { deleteFile } from '../lib/r2';
 import { triggerProcessing, buildFileUrl } from '../lib/modal';
 import { getUserId } from '../lib/auth';
 import { setCurrentJobForUser } from '../lib/db';
 import { buildAbsoluteSignedUrl } from '../lib/signing';
+import { isRateLimited, addRateLimitHeaders } from '../lib/rateLimit';
 
 // GET /api/phrases
 export async function handleListPhrases(
@@ -128,6 +129,17 @@ export async function handleApprovePhrase(
   env: Env,
   id: string
 ): Promise<Response> {
+  // Check rate limit
+  const { limited, userId: rateLimitUserId } = await isRateLimited(request, env, 'approve');
+  if (limited) {
+    const headers = new Headers();
+    if (rateLimitUserId) addRateLimitHeaders(headers, rateLimitUserId, 'approve');
+    return Response.json(
+      { error: 'Too many approve requests. Please try again later.' },
+      { status: 429, headers }
+    );
+  }
+
   const userId = await getUserId(request, env);
   const phrase = await getPhraseForUser(env, userId, id);
   
@@ -143,8 +155,11 @@ export async function handleApprovePhrase(
   }
   
   await updatePhraseForUser(env, userId, id, { status: 'approved' });
-  
-  return Response.json({ message: 'Phrase approved' });
+
+  const responseHeaders = new Headers();
+  addRateLimitHeaders(responseHeaders, userId, 'approve');
+
+  return Response.json({ message: 'Phrase approved' }, { headers: responseHeaders });
 }
 
 // POST /api/phrases/:id/regenerate-audio
@@ -153,6 +168,17 @@ export async function handleRegenerateAudio(
   env: Env,
   id: string
 ): Promise<Response> {
+  // Check rate limit
+  const { limited, userId: rateLimitUserId } = await isRateLimited(request, env, 'regenerate');
+  if (limited) {
+    const headers = new Headers();
+    if (rateLimitUserId) addRateLimitHeaders(headers, rateLimitUserId, 'regenerate');
+    return Response.json(
+      { error: 'Too many regenerate requests. Please try again later.' },
+      { status: 429, headers }
+    );
+  }
+
   const userId = await getUserId(request, env);
   const phrase = await getPhraseForUser(env, userId, id);
   
@@ -198,8 +224,11 @@ export async function handleRegenerateAudio(
     job_id: jobId,
     audio_only: true,  // Only regenerate audio, don't overwrite other fields
   }, requestUrl);
-  
-  return Response.json({ message: 'Audio regeneration triggered' });
+
+  const responseHeaders = new Headers();
+  addRateLimitHeaders(responseHeaders, userId, 'regenerate');
+
+  return Response.json({ message: 'Audio regeneration triggered' }, { headers: responseHeaders });
 }
 
 // POST /api/phrases/:id/retry
@@ -208,6 +237,17 @@ export async function handleRetryPhrase(
   env: Env,
   id: string
 ): Promise<Response> {
+  // Check rate limit
+  const { limited, userId: rateLimitUserId } = await isRateLimited(request, env, 'retry');
+  if (limited) {
+    const headers = new Headers();
+    if (rateLimitUserId) addRateLimitHeaders(headers, rateLimitUserId, 'retry');
+    return Response.json(
+      { error: 'Too many retry requests. Please try again later.' },
+      { status: 429, headers }
+    );
+  }
+
   const userId = await getUserId(request, env);
   const phrase = await getPhraseForUser(env, userId, id);
   if (!phrase) {
@@ -226,7 +266,11 @@ export async function handleRetryPhrase(
     webhook_url: '',
     job_id: jobId,
   }, requestUrl);
-  return Response.json({ message: 'Retry queued', status: 'processing' });
+
+  const responseHeaders = new Headers();
+  addRateLimitHeaders(responseHeaders, userId, 'retry');
+
+  return Response.json({ message: 'Retry queued', status: 'processing' }, { headers: responseHeaders });
 }
 
 // DELETE /api/phrases/:id

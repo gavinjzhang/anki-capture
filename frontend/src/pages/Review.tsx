@@ -5,11 +5,13 @@ import {
   approvePhrase,
   deletePhrase,
   regenerateAudio,
+  retryPhrase,
   getFileUrl,
   Phrase,
   VocabItem
 } from '../lib/api'
 import { useAdaptivePolling } from '../lib/useAdaptivePolling'
+import { useToast } from '../components/Toast'
 
 function VocabTable({ 
   vocab, 
@@ -126,7 +128,9 @@ function PhraseCard({
   onApprove,
   onDelete,
   onRegenerateAudio,
+  onRetry,
   regenerating,
+  retrying,
   audioBust,
   onDirtyChange,
 }: {
@@ -135,18 +139,23 @@ function PhraseCard({
   onApprove: () => Promise<void>;
   onDelete: () => Promise<void>;
   onRegenerateAudio: (text: string, language: 'ru' | 'ar' | 'zh' | 'es' | null, hasUnsavedChanges: boolean, saveCallback: () => Promise<void>) => Promise<void>;
+  onRetry: () => Promise<void>;
   regenerating: boolean;
+  retrying: boolean;
   audioBust?: string;
   onDirtyChange: (id: string, dirty: boolean) => void;
 }) {
   const [saving, setSaving] = useState(false)
   const [localPhrase, setLocalPhrase] = useState(phrase)
   const [isDirty, setIsDirty] = useState(false)
+  const toast = useToast()
 
   // Do not clobber in-progress edits when polling refreshes props.
   useEffect(() => {
     if (!isDirty) setLocalPhrase(phrase)
   }, [phrase, isDirty])
+
+  const hasChanges = JSON.stringify(localPhrase) !== JSON.stringify(phrase)
 
   const handleFieldChange = (field: keyof Phrase, value: unknown) => {
     setIsDirty(true)
@@ -166,26 +175,53 @@ function PhraseCard({
       })
       setIsDirty(false)
       onDirtyChange(phrase.id, false)
+      toast.showToast('Changes saved successfully', 'success', 3000)
+    } catch (error) {
+      toast.showToast(
+        error instanceof Error ? error.message : 'Failed to save changes',
+        'error',
+        5000
+      )
+      throw error
     } finally {
       setSaving(false)
     }
   }
 
-  const hasChanges = JSON.stringify(localPhrase) !== JSON.stringify(phrase)
+  // Keyboard shortcut: Ctrl/Cmd+S to save
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault()
+        if (hasChanges && !saving) {
+          handleSave()
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [hasChanges, saving])
 
   return (
     <div className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-zinc-800/50 border-b border-zinc-800">
-        <div className="flex items-center gap-3">
-          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-            phrase.status === 'processing' ? 'bg-yellow-500/20 text-yellow-400' :
-            phrase.status === 'pending_review' ? 'bg-blue-500/20 text-blue-400' :
-            phrase.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' :
-            'bg-zinc-500/20 text-zinc-400'
-          }`}>
-            {phrase.status.replace('_', ' ')}
-          </span>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+              phrase.status === 'processing' ? 'bg-yellow-500/20 text-yellow-400' :
+              phrase.status === 'pending_review' ? 'bg-blue-500/20 text-blue-400' :
+              phrase.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' :
+              'bg-zinc-500/20 text-zinc-400'
+            }`}>
+              {phrase.status.replace('_', ' ')}
+            </span>
+            {isDirty && (
+              <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                Unsaved
+              </span>
+            )}
+          </div>
           <span className="text-zinc-500 text-sm">
             {phrase.detected_language === 'ru' ? '🇷🇺' :
              phrase.detected_language === 'ar' ? '🇸🇦' :
@@ -195,18 +231,39 @@ function PhraseCard({
           <span className="text-zinc-600 text-xs font-mono">
             {phrase.id.slice(0, 8)}
           </span>
+          {phrase.job_attempts > 0 && (
+            <span className="text-zinc-500 text-xs">
+              Attempts: {phrase.job_attempts}
+            </span>
+          )}
+          {phrase.last_error && (
+            <span className="text-red-400 text-xs max-w-xs truncate" title={phrase.last_error}>
+              Error: {phrase.last_error}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
+          {phrase.last_error && phrase.status === 'processing' && (
+            <button
+              onClick={onRetry}
+              disabled={retrying}
+              className="px-3 py-1 text-sm bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-700 rounded transition-colors"
+              title="Retry processing this phrase"
+            >
+              {retrying ? 'Retrying...' : 'Retry'}
+            </button>
+          )}
           {hasChanges && (
             <button
               onClick={handleSave}
               disabled={saving}
               className="px-3 py-1 text-sm bg-zinc-700 hover:bg-zinc-600 rounded transition-colors"
+              title="Save changes (Ctrl/Cmd+S)"
             >
               {saving ? 'Saving...' : 'Save'}
             </button>
           )}
-          {phrase.status === 'pending_review' && (
+          {phrase.status === 'pending_review' && !hasChanges && (
             <button
               onClick={onApprove}
               className="px-3 py-1 text-sm bg-emerald-600 hover:bg-emerald-500 rounded transition-colors"
@@ -347,8 +404,10 @@ export default function ReviewPage() {
   const [approvingAll, setApprovingAll] = useState(false)
   const [approvedCount, setApprovedCount] = useState(0)
   const [regeneratingIds, setRegeneratingIds] = useState<Set<string>>(new Set())
+  const [retryingIds, setRetryingIds] = useState<Set<string>>(new Set())
   const [audioBust, setAudioBust] = useState<Record<string, string>>({})
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set())
+  const toast = useToast()
 
   const loadPhrases = useCallback(async () => {
     try {
@@ -372,19 +431,63 @@ export default function ReviewPage() {
   })
 
   const handleUpdate = async (id: string, updates: Partial<Phrase>) => {
-    await updatePhrase(id, updates)
-    await pollNow() // Immediate refresh after user action
+    try {
+      await updatePhrase(id, updates)
+      await pollNow() // Immediate refresh after user action
+    } catch (error) {
+      toast.showToast(
+        error instanceof Error ? error.message : 'Failed to update phrase',
+        'error'
+      )
+      throw error
+    }
   }
 
   const handleApprove = async (id: string) => {
-    await approvePhrase(id)
-    await pollNow() // Immediate refresh after user action
+    try {
+      await approvePhrase(id)
+      toast.showToast('Phrase approved', 'success', 3000)
+      await pollNow() // Immediate refresh after user action
+    } catch (error) {
+      toast.showToast(
+        error instanceof Error ? error.message : 'Failed to approve phrase',
+        'error'
+      )
+    }
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this phrase?')) return
-    await deletePhrase(id)
-    await pollNow() // Immediate refresh after user action
+    try {
+      await deletePhrase(id)
+      toast.showToast('Phrase deleted', 'success', 3000)
+      await pollNow() // Immediate refresh after user action
+    } catch (error) {
+      toast.showToast(
+        error instanceof Error ? error.message : 'Failed to delete phrase',
+        'error'
+      )
+    }
+  }
+
+  const handleRetry = async (id: string) => {
+    setRetryingIds(prev => new Set(prev).add(id))
+    try {
+      await retryPhrase(id)
+      toast.showToast('Phrase retry queued', 'success', 3000)
+      await pollNow()
+    } catch (error) {
+      toast.showToast(
+        error instanceof Error ? error.message : 'Failed to retry phrase',
+        'error'
+      )
+    } finally {
+      setRetryingIds(prev => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
+    }
   }
 
   const handleDirtyChange = (id: string, dirty: boolean) => {
@@ -417,10 +520,16 @@ export default function ReviewPage() {
     setRegeneratingIds(prev => new Set(prev).add(id))
     try {
       await regenerateAudio(id, { source_text: text, language: lang })
+      toast.showToast('Audio regeneration started', 'success', 3000)
       // Give backend a moment to produce new audio, then bust cache and refresh
       await new Promise(r => setTimeout(r, 4000))
       setAudioBust(prev => ({ ...prev, [id]: String(Date.now()) }))
       await pollNow()
+    } catch (error) {
+      toast.showToast(
+        error instanceof Error ? error.message : 'Failed to regenerate audio',
+        'error'
+      )
     } finally {
       setRegeneratingIds(prev => {
         const next = new Set(prev)
@@ -522,7 +631,9 @@ export default function ReviewPage() {
               onRegenerateAudio={(text, language, hasUnsavedChanges, saveCallback) =>
                 handleRegenerateAudio(phrase.id, text, language, hasUnsavedChanges, saveCallback)
               }
+              onRetry={() => handleRetry(phrase.id)}
               regenerating={regeneratingIds.has(phrase.id)}
+              retrying={retryingIds.has(phrase.id)}
               audioBust={audioBust[phrase.id]}
               onDirtyChange={handleDirtyChange}
             />

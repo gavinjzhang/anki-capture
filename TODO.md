@@ -6,10 +6,10 @@
  - Per-user backpressure: cap concurrent jobs, queue retries.
 
 ## Security / Auth
-- Secrets: move `MODAL_WEBHOOK_SECRET` to Worker secret; rotate.
- - Signed URLs: serve `/api/files` via short-lived signed URLs; remove unauthenticated access.
- - Clerk hardening: configure allowed origins/redirects; ensure prod issuer/keys.
- - Rate limits: per-user limits for upload/regen/retry to curb abuse.
+- ✅ Secrets: moved `MODAL_WEBHOOK_SECRET` to Worker secret via wrangler CLI
+- ✅ Signed URLs: serving `/api/files` via short-lived signed URLs; removed unauthenticated access
+- ✅ Clerk hardening: documented configuration (see SECURITY.md); ensure prod issuer/keys set
+- ✅ Rate limits: implemented per-user limits for upload (10/min), regen (5/min), retry (5/min), approve (20/min)
 
 ## DX / Config
 - (Done) Env-based Modal endpoint
@@ -25,6 +25,7 @@
  - Event-driven updates (Future): WebSocket + Durable Object per user; broadcast on upload/webhook/approve/delete (deferred - polling is sufficient)
  - Logpush + alerts: 5xx spikes, webhook auth failures, enqueue errors, stuck processing counts.
  - Synthetics: external ping checks for `/api/health`.
+ - Sentry: Set up error tracking for Workers + Frontend (error monitoring, distributed tracing, performance monitoring)
 
 ## Storage Lifecycle
 - R2 lifecycle rules for old originals.
@@ -37,8 +38,12 @@
 - Batch polish: per-file progress/errors; configurable concurrency.
 - Review: filters (language/date), search, bulk exclude/reject.
 - Approve All: add "Approve Selected" with checkboxes.
- - Review: toast notifications on save/regen errors; keyboard shortcuts (Ctrl/Cmd+S); unsaved badge; disable Approve while dirty.
- - Review: show job_attempts and last_error; inline Retry button for failed/timeouts.
+ - ✅ Review: toast notifications on save/regen errors implemented
+ - ✅ Review: keyboard shortcuts (Ctrl/Cmd+S) added
+ - ✅ Review: unsaved changes badge displayed
+ - ✅ Review: Approve disabled while dirty
+ - ✅ Review: showing job_attempts and last_error in header
+ - ✅ Review: inline Retry button for failed/timeout jobs
  - Library: quick filters (status/language), search by text, sortable columns.
  - Library: multi-select and batch actions (approve/delete/exclude) with progress and confirmation.
  - Upload: per-file progress bars and error badges; drag-and-drop hover; image thumbnails.

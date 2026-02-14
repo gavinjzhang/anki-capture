@@ -220,10 +220,30 @@ npm run build
 npx wrangler pages deploy dist --project-name=anki-capture
 ```
 
-### 5. Update Worker Config
+### 5. Configure Worker Secrets
 
-Update `worker/wrangler.toml`:
-- Set `MODAL_WEBHOOK_SECRET` to match the Modal secret
+**IMPORTANT**: Never commit secrets to wrangler.toml. Set them using Wrangler CLI:
+
+```bash
+cd worker
+
+# Set webhook secret (must match Modal secret)
+npx wrangler secret put MODAL_WEBHOOK_SECRET
+
+# Set file URL signing secret (generate a strong random secret)
+npx wrangler secret put FILE_URL_SIGNING_SECRET
+
+# For production environment
+npx wrangler secret put MODAL_WEBHOOK_SECRET --env production
+npx wrangler secret put FILE_URL_SIGNING_SECRET --env production
+```
+
+Generate a secure random secret:
+```bash
+openssl rand -base64 32
+```
+
+Update other config in `worker/wrangler.toml`:
 - Verify D1 database_id is correct
 - Ensure R2 uses a separate dev bucket by having:
   - `bucket_name = "anki-capture-files"`
@@ -250,16 +270,34 @@ cd frontend
 npm run dev  # Starts on localhost:5173, proxies /api to :8787
 ```
 
-## Signed File URLs
+## Security
 
-The Worker now serves files from R2 via short‑lived HMAC‑signed URLs to prevent public access:
+**See [SECURITY.md](./SECURITY.md) for comprehensive security documentation.**
 
-- Configure the secret once per environment:
-  - `cd worker && npx wrangler secret put FILE_URL_SIGNING_SECRET`
-- The API returns signed `audio_url`/`original_file_url` values in phrase and export responses.
-- The Modal jobs receive a long‑lived signed URL (24h TTL) to fetch originals.
-- The `/api/files/:key` route accepts `?e=<unix_ts>&sig=<hmac>` and also allows authenticated access scoped to the caller’s namespace.
-- If `FILE_URL_SIGNING_SECRET` is not set (e.g., during local dev), the route permits legacy unauthenticated access to avoid breaking the UI.
+### Signed File URLs
+
+Files from R2 are served via short-lived HMAC-signed URLs to prevent unauthorized access:
+
+- **Required**: Set `FILE_URL_SIGNING_SECRET` via `wrangler secret put` (see setup above)
+- The API returns signed `audio_url`/`original_file_url` in phrase and export responses
+- Modal jobs receive long-lived signed URLs (24h TTL) to fetch originals
+- The `/api/files/:key` route accepts `?e=<unix_ts>&sig=<hmac>` for temporary access
+- Authenticated users can access files in their own namespace
+- **Important**: File access is now enforced - requests without valid signatures or authentication will be rejected
+
+### Webhook Security
+
+- The Modal webhook (`/api/webhook/modal`) requires Bearer token authentication
+- Set `MODAL_WEBHOOK_SECRET` via Wrangler secrets (never in wrangler.toml)
+- The same secret must be configured in Modal secrets as `MODAL_WEBHOOK_SECRET`
+- Webhook requests without valid Bearer token are rejected with 401
+
+### Multi-tenant Isolation
+
+- All user data is scoped by `user_id` from Clerk JWT
+- R2 keys are namespaced: `{user_id}/original/...`, `{user_id}/audio/...`
+- D1 queries filtered by `user_id`
+- Users cannot access other users' files or data
 
 ## Usage
 

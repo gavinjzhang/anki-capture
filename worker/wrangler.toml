@@ -4,11 +4,11 @@ compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-MODAL_WEBHOOK_SECRET = "netsuiteapi"
+# MODAL_WEBHOOK_SECRET should be set via `wrangler secret put MODAL_WEBHOOK_SECRET`
+# FILE_URL_SIGNING_SECRET should be set via `wrangler secret put FILE_URL_SIGNING_SECRET`
 CLERK_JWT_ISSUER = "https://thankful-vulture-59.clerk.accounts.dev"
 MODAL_ENDPOINT = "https://gavinjzhang--anki-capture-trigger.modal.run"
-# FILE_URL_SIGNING_SECRET should be set via `wrangler secret put FILE_URL_SIGNING_SECRET`
-FILE_URL_SIGNING_SECRET = ""
+ALLOWED_ORIGINS = ""  # Set to your frontend URL, e.g., "https://anki-capture.pages.dev"
 
 [[d1_databases]]
 binding = "DB"
@@ -31,7 +31,7 @@ database_id = "local"
 
 # Production
 [env.production]
-vars = { ENVIRONMENT = "production", MODAL_WEBHOOK_SECRET = "netsuiteapi", CLERK_JWT_ISSUER = "", MODAL_ENDPOINT = "https://gavinjzhang--anki-capture-trigger.modal.run", FILE_URL_SIGNING_SECRET = "" }
+vars = { ENVIRONMENT = "production", CLERK_JWT_ISSUER = "", MODAL_ENDPOINT = "https://gavinjzhang--anki-capture-trigger.modal.run", ALLOWED_ORIGINS = "https://anki-capture.pages.dev/" }  # Set to your production frontend URL
 
 [[env.production.d1_databases]]
 binding = "DB"

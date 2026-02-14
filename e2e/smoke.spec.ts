@@ -21,6 +21,9 @@ test.describe("Critical User Flow", () => {
     // Navigate to app
     await page.goto("/");
 
+    // Wait for React to hydrate
+    await page.waitForLoadState("networkidle");
+
     // Should show Capture page by default
     await expect(page.locator("h1")).toContainText("Capture");
 

@@ -3,6 +3,7 @@ import { createPhrase, setCurrentJobForUser } from '../lib/db';
 import { uploadFile, generateFileKey, getExtensionFromContentType } from '../lib/r2';
 import { getUserId } from '../lib/auth';
 import { triggerProcessing, buildFileUrl } from '../lib/modal';
+import { isRateLimited, addRateLimitHeaders } from '../lib/rateLimit';
 
 function generateId(): string {
   return crypto.randomUUID();
@@ -19,6 +20,17 @@ export async function handleFileUpload(
   request: Request,
   env: Env
 ): Promise<Response> {
+  // Check rate limit
+  const { limited, userId: rateLimitUserId } = await isRateLimited(request, env, 'upload');
+  if (limited) {
+    const headers = new Headers();
+    if (rateLimitUserId) addRateLimitHeaders(headers, rateLimitUserId, 'upload');
+    return Response.json(
+      { error: 'Too many upload requests. Please try again later.' },
+      { status: 429, headers }
+    );
+  }
+
   const userId = await getUserId(request, env)
   const formData = await request.formData();
   const file = formData.get('file') as File | null;
@@ -66,11 +78,14 @@ export async function handleFileUpload(
     webhook_url: '', // Will be set in triggerProcessing
     job_id: jobId,
   }, requestUrl);
-  
+
+  const responseHeaders = new Headers();
+  addRateLimitHeaders(responseHeaders, userId, 'upload');
+
   return Response.json({
     id: phraseId,
     status: 'processing',
-  });
+  }, { headers: responseHeaders });
 }
 
 // POST /api/upload/text - JSON body with text content
@@ -78,6 +93,17 @@ export async function handleTextUpload(
   request: Request,
   env: Env
 ): Promise<Response> {
+  // Check rate limit
+  const { limited, userId: rateLimitUserId } = await isRateLimited(request, env, 'upload');
+  if (limited) {
+    const headers = new Headers();
+    if (rateLimitUserId) addRateLimitHeaders(headers, rateLimitUserId, 'upload');
+    return Response.json(
+      { error: 'Too many upload requests. Please try again later.' },
+      { status: 429, headers }
+    );
+  }
+
   const userId = await getUserId(request, env)
   const body = await request.json() as { text?: string; language?: Language };
   
@@ -111,9 +137,12 @@ export async function handleTextUpload(
     webhook_url: '',
     job_id: jobId,
   }, requestUrl);
-  
+
+  const responseHeaders = new Headers();
+  addRateLimitHeaders(responseHeaders, userId, 'upload');
+
   return Response.json({
     id: phraseId,
     status: 'processing',
-  });
+  }, { headers: responseHeaders });
 }
