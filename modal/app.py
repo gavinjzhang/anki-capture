@@ -35,6 +35,7 @@ processing_image = modal.Image.debian_slim(python_version="3.11").pip_install(
     "google-cloud-vision",
     "google-cloud-texttospeech",
     "openai",
+    "elevenlabs",
     # Required for @modal.web_endpoint functions
     "fastapi",
 )
@@ -601,8 +602,53 @@ Respond ONLY with valid JSON. No markdown, no code blocks, no extra text."""
     retries=2,
     secrets=[modal.Secret.from_name("anki-capture-secrets")],
 )
-async def generate_tts(text: str, language: str) -> bytes:
-    """Generate TTS audio using Google Cloud Text-to-Speech."""
+async def generate_tts_elevenlabs(text: str, language: str) -> bytes:
+    """Generate TTS audio using ElevenLabs for languages not supported by Google Cloud TTS."""
+    from elevenlabs import ElevenLabs
+
+    api_key = os.environ.get("ELEVENLABS_API_KEY")
+    if not api_key:
+        raise Exception("ELEVENLABS_API_KEY not configured")
+
+    client = ElevenLabs(api_key=api_key)
+
+    # Get language config
+    config = get_language_config(language)
+    if not config:
+        raise ValueError(f"Unsupported language for TTS: {language}")
+
+    # Map language to ISO 639-1 code for ElevenLabs
+    # ElevenLabs uses 2-letter codes: ka, ru, ar, zh, es
+    lang_code_2letter = config.code  # 'ka', 'ru', 'ar', 'zh', 'es'
+
+    print(f"ElevenLabs TTS: lang={language}, code={lang_code_2letter}")
+
+    # Use multilingual v2 model with automatic voice selection
+    # ElevenLabs will pick an appropriate voice for the language
+    audio_generator = client.text_to_speech.convert(
+        text=text,
+        model_id="eleven_multilingual_v2",
+        language_code=lang_code_2letter,
+        output_format="mp3_44100_128"
+    )
+
+    # Collect audio bytes from generator
+    audio_chunks = []
+    for chunk in audio_generator:
+        audio_chunks.append(chunk)
+
+    audio_data = b''.join(audio_chunks)
+    if not audio_data or len(audio_data) < 100:
+        raise Exception("ElevenLabs TTS returned empty audio")
+
+    return audio_data
+
+
+async def generate_tts(text: str, language: str) -> Optional[bytes]:
+    """
+    Generate TTS audio using Google Cloud Text-to-Speech.
+    Falls back to ElevenLabs for languages not supported by Google Cloud TTS.
+    """
     from google.cloud import texttospeech
     from google.oauth2 import service_account
 
@@ -626,19 +672,22 @@ async def generate_tts(text: str, language: str) -> bytes:
     voices = client.list_voices().voices
     candidates = [v for v in voices if any(lang_code in lc for lc in v.language_codes)]
 
+    # If no voices available for this language, fall back to ElevenLabs
+    if not candidates:
+        print(f"Google Cloud TTS not available for lang={language}, code={lang_code}. Falling back to ElevenLabs.")
+        return await generate_tts_elevenlabs(text, language)
+
     def pick_voice() -> texttospeech.VoiceSelectionParams:
         if override_name and any(v.name == override_name for v in candidates):
             chosen = next(v for v in candidates if v.name == override_name)
             return texttospeech.VoiceSelectionParams(language_code=chosen.language_codes[0], name=chosen.name)
         # Prefer higher quality voices first (Wavenet/Neural), else fallback to Standard
         premium = [v for v in candidates if "Wavenet" in v.name or "Neural" in v.name]
-        chosen = (premium[0] if premium else (candidates[0] if candidates else None))
-        if chosen:
-            return texttospeech.VoiceSelectionParams(language_code=chosen.language_codes[0], name=chosen.name)
-        # Fallback generic without specifying name
-        return texttospeech.VoiceSelectionParams(language_code=lang_code)
+        chosen = premium[0] if premium else candidates[0]
+        return texttospeech.VoiceSelectionParams(language_code=chosen.language_codes[0], name=chosen.name)
 
     voice = pick_voice()
+    print(f"Google Cloud TTS: lang={language}, code={lang_code}, voice={voice.name}, override={override_name}, candidates={len(candidates)}")
     synthesis_input = texttospeech.SynthesisInput(text=text)
     audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3)
     response = client.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
@@ -714,7 +763,10 @@ async def process_upload(
         if source_type in ("image", "text"):
             print("Generating TTS audio")
             audio_data = await generate_tts.remote.aio(extracted_text, detected_language)
-            audio_b64 = base64.b64encode(audio_data).decode()
+            if audio_data:
+                audio_b64 = base64.b64encode(audio_data).decode()
+            else:
+                print(f"TTS skipped for language {detected_language} (not supported by Google Cloud TTS)")
         
         # Step 4: Send results back via webhook
         result_data = {
