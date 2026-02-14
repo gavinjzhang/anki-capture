@@ -675,7 +675,7 @@ async def generate_tts(text: str, language: str) -> Optional[bytes]:
     # If no voices available for this language, fall back to ElevenLabs
     if not candidates:
         print(f"Google Cloud TTS not available for lang={language}, code={lang_code}. Falling back to ElevenLabs.")
-        return await generate_tts_elevenlabs(text, language)
+        return await generate_tts_elevenlabs.remote.aio(text, language)
 
     def pick_voice() -> texttospeech.VoiceSelectionParams:
         if override_name and any(v.name == override_name for v in candidates):
