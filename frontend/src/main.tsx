@@ -12,17 +12,29 @@ import { ToastProvider } from './components/Toast'
 import './index.css'
 
 function AuthWire() {
-  const { getToken, isSignedIn } = useAuth()
+  const auth = useAuth()
+  const authRef = React.useRef(auth)
+
+  // Keep ref updated with latest auth state
+  React.useEffect(() => {
+    authRef.current = auth
+  })
+
+  // Set up token provider ONCE on mount
+  // Provider reads from ref to get current auth state (avoiding stale closures)
   React.useEffect(() => {
     setAuthTokenProvider(async () => {
-      if (!isSignedIn) return null
+      const current = authRef.current
+      if (!current.isLoaded) return null
+      if (!current.isSignedIn) return null
       try {
-        return await getToken()
+        return await current.getToken()
       } catch {
         return null
       }
     })
-  }, [getToken, isSignedIn])
+  }, []) // Empty deps - only set provider once
+
   return null
 }
 

@@ -148,6 +148,26 @@ For each significant word, provide:
 Focus on content words. Include pronouns/particles only when relevant.
 """,
     ),
+    "ka": LanguageConfig(
+        code="ka",
+        name="Georgian",
+        locale_variants=["ka", "kat", "geo", "georgian"],
+        script_range=(0x10A0, 0x10FF),  # Georgian
+        tts_code="ka-GE",
+        tts_voice_env_var="GCP_TTS_KA_VOICE",
+        whisper_names=["georgian", "ka"],
+        vocab_instructions="""
+For each significant word, provide:
+- word: the word as it appears
+- root: base form (infinitive for verbs, nominative singular for nouns)
+- meaning: English translation
+- gender: null (Georgian has no grammatical gender)
+- declension: case and number info (nominative, ergative, dative, genitive, etc.)
+- notes: verb screeves (present, aorist, perfect), pluralization, or usage notes
+
+Focus on content words. Include postpositions only when they affect meaning.
+""",
+    ),
 }
 
 

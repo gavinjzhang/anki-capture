@@ -21,7 +21,7 @@ function VocabTable({
 }: { 
   vocab: VocabItem[];
   onChange: (vocab: VocabItem[]) => void;
-  language: 'ru' | 'ar' | 'zh' | 'es' | null;
+  language: 'ru' | 'ar' | 'zh' | 'es' | 'ka' | null;
 }) {
   const updateItem = (index: number, field: keyof VocabItem, value: string | null) => {
     const updated = [...vocab]
@@ -139,7 +139,7 @@ function PhraseCard({
   onUpdate: (updates: Partial<Phrase>) => Promise<void>;
   onApprove: () => Promise<void>;
   onDelete: () => Promise<void>;
-  onRegenerateAudio: (text: string, language: 'ru' | 'ar' | 'zh' | 'es' | null, hasUnsavedChanges: boolean, saveCallback: () => Promise<void>) => Promise<void>;
+  onRegenerateAudio: (text: string, language: 'ru' | 'ar' | 'zh' | 'es' | 'ka' | null, hasUnsavedChanges: boolean, saveCallback: () => Promise<void>) => Promise<void>;
   onRetry: () => Promise<void>;
   regenerating: boolean;
   retrying: boolean;
@@ -227,7 +227,8 @@ function PhraseCard({
             {phrase.detected_language === 'ru' ? '🇷🇺' :
              phrase.detected_language === 'ar' ? '🇸🇦' :
              phrase.detected_language === 'zh' ? '🇨🇳' :
-             phrase.detected_language === 'es' ? '🇪🇸' : '🏳️'}
+             phrase.detected_language === 'es' ? '🇪🇸' :
+             phrase.detected_language === 'ka' ? '🇬🇪' : '🏳️'}
           </span>
           <span className="text-zinc-600 text-xs font-mono">
             {phrase.id.slice(0, 8)}
@@ -517,7 +518,7 @@ export default function ReviewPage() {
   const handleRegenerateAudio = async (
     id: string,
     text: string,
-    lang: 'ru' | 'ar' | 'zh' | 'es' | null,
+    lang: 'ru' | 'ar' | 'zh' | 'es' | 'ka' | null,
     hasUnsavedChanges: boolean,
     saveCallback: () => Promise<void>
   ) => {

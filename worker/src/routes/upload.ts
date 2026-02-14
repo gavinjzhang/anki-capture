@@ -111,9 +111,9 @@ export async function handleTextUpload(
     return Response.json({ error: 'No text provided' }, { status: 400 });
   }
   
-  if (!body.language || !['ru', 'ar', 'zh', 'es'].includes(body.language)) {
+  if (!body.language || !['ru', 'ar', 'zh', 'es', 'ka'].includes(body.language)) {
     return Response.json(
-      { error: 'Language required for text input (ru, ar, zh, es)' },
+      { error: 'Language required for text input (ru, ar, zh, es, ka)' },
       { status: 400 }
     );
   }

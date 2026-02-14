@@ -153,8 +153,11 @@ export default function LibraryPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      {phrase.detected_language === 'ru' ? '🇷🇺' : 
-                       phrase.detected_language === 'ar' ? '🇸🇦' : '-'}
+                      {phrase.detected_language === 'ru' ? '🇷🇺' :
+                       phrase.detected_language === 'ar' ? '🇸🇦' :
+                       phrase.detected_language === 'zh' ? '🇨🇳' :
+                       phrase.detected_language === 'es' ? '🇪🇸' :
+                       phrase.detected_language === 'ka' ? '🇬🇪' : '-'}
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-zinc-400">
