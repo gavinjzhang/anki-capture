@@ -3,6 +3,7 @@ export interface Env {
   BUCKET: R2Bucket;
   MODAL_WEBHOOK_SECRET: string;
   MODAL_ENDPOINT?: string;
+  MODAL_GENERATE_ENDPOINT?: string;
   ENVIRONMENT: string;
   CLERK_JWT_ISSUER?: string;
   CLERK_JWKS_URL?: string; // optional override for JWKS

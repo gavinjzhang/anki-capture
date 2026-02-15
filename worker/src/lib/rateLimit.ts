@@ -20,6 +20,7 @@ const RATE_LIMITS: Record<string, RateLimitConfig> = {
   regenerate: { maxRequests: 5, windowMs: 60 * 1000 }, // 5 regenerations per minute
   retry: { maxRequests: 5, windowMs: 60 * 1000 }, // 5 retries per minute
   approve: { maxRequests: 20, windowMs: 60 * 1000 }, // 20 approvals per minute
+  generate: { maxRequests: 10, windowMs: 60 * 1000 }, // 10 generations per minute
 };
 
 /**

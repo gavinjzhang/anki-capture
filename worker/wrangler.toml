@@ -15,6 +15,7 @@ invocation_logs = true
 # FILE_URL_SIGNING_SECRET should be set via `wrangler secret put FILE_URL_SIGNING_SECRET`
 CLERK_JWT_ISSUER = "https://thankful-vulture-59.clerk.accounts.dev"
 MODAL_ENDPOINT = "https://gavinjzhang--anki-capture-trigger.modal.run"
+MODAL_GENERATE_ENDPOINT = "https://gavinjzhang--anki-capture-generate-phrases.modal.run"
 ALLOWED_ORIGINS = "*"  # Allow all origins (change to specific domain in production)
 
 [[d1_databases]]
@@ -29,12 +30,22 @@ preview_bucket_name = "anki-capture-files-dev"
 
 # For local development
 [env.dev]
-vars = { ENVIRONMENT = "development" }
+[env.dev.vars]
+ENVIRONMENT = "development"
+CLERK_JWT_ISSUER = "https://thankful-vulture-59.clerk.accounts.dev"
+MODAL_ENDPOINT = "https://gavinjzhang--anki-capture-trigger.modal.run"
+MODAL_GENERATE_ENDPOINT = "https://gavinjzhang--anki-capture-generate-phrases.modal.run"
+ALLOWED_ORIGINS = "*"
 
-[env.dev.d1_databases]
+[[env.dev.d1_databases]]
 binding = "DB"
-database_name = "anki-capture-dev"
+database_name = "anki-capture"
 database_id = "local"
+
+[[env.dev.r2_buckets]]
+binding = "BUCKET"
+bucket_name = "anki-capture-files"
+preview_bucket_name = "anki-capture-files-dev"
 
 # Production
 [env.production]

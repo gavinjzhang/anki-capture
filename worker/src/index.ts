@@ -1,14 +1,15 @@
 import { Env } from './types';
 import { handleFileUpload, handleTextUpload } from './routes/upload';
-import { 
-  handleListPhrases, 
-  handleGetPhrase, 
+import {
+  handleListPhrases,
+  handleGetPhrase,
   handleUpdatePhrase,
   handleApprovePhrase,
   handleRegenerateAudio,
   handleDeletePhrase,
   handleRetryPhrase
 } from './routes/phrases';
+import { handleGenerate, handleConfirmGenerated } from './routes/generate';
 import { handleExport, handleExportComplete, handleExportPreview } from './routes/export';
 import { handleModalWebhook } from './routes/webhook';
 import { handleGetFile } from './routes/files';
@@ -29,7 +30,11 @@ const routes: Route[] = [
   // Upload
   { method: 'POST', pattern: /^\/api\/upload$/, handler: handleFileUpload },
   { method: 'POST', pattern: /^\/api\/upload\/text$/, handler: handleTextUpload },
-  
+
+  // Generate
+  { method: 'POST', pattern: /^\/api\/generate$/, handler: handleGenerate },
+  { method: 'POST', pattern: /^\/api\/generate\/confirm$/, handler: handleConfirmGenerated },
+
   // Phrases CRUD
   { method: 'GET', pattern: /^\/api\/phrases$/, handler: handleListPhrases },
   { method: 'GET', pattern: /^\/api\/phrases\/([^/]+)$/, handler: handleGetPhrase },
@@ -38,15 +43,15 @@ const routes: Route[] = [
   { method: 'POST', pattern: /^\/api\/phrases\/([^/]+)\/approve$/, handler: handleApprovePhrase },
   { method: 'POST', pattern: /^\/api\/phrases\/([^/]+)\/regenerate-audio$/, handler: handleRegenerateAudio },
   { method: 'POST', pattern: /^\/api\/phrases\/([^/]+)\/retry$/, handler: handleRetryPhrase },
-  
+
   // Export
   { method: 'GET', pattern: /^\/api\/export$/, handler: handleExport },
   { method: 'GET', pattern: /^\/api\/export\/preview$/, handler: handleExportPreview },
   { method: 'POST', pattern: /^\/api\/export\/complete$/, handler: handleExportComplete },
-  
+
   // Webhook
   { method: 'POST', pattern: /^\/api\/webhook\/modal$/, handler: handleModalWebhook },
-  
+
   // Files
   { method: 'GET', pattern: /^\/api\/files\/(.+)$/, handler: handleGetFile },
 

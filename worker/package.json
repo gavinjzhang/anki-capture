@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --remote",
     "deploy": "wrangler deploy",
     "db:init": "wrangler d1 execute anki-capture --file=./schema.sql",
     "db:init:local": "wrangler d1 execute anki-capture --local --file=./schema.sql",
