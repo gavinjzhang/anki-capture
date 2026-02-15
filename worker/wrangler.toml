@@ -53,6 +53,7 @@ preview_bucket_name = "anki-capture-files-dev"
 ENVIRONMENT = "production"
 CLERK_JWT_ISSUER = "https://YOUR-APP.clerk.accounts.dev"  # Replace with your production Clerk issuer
 MODAL_ENDPOINT = "https://gavinjzhang--anki-capture-trigger.modal.run"
+MODAL_GENERATE_ENDPOINT = "https://gavinjzhang--anki-capture-generate-phrases.modal.run"
 ALLOWED_ORIGINS = "https://anki-capture.pages.dev"  # Replace with your actual frontend URL
 
 [[env.production.d1_databases]]

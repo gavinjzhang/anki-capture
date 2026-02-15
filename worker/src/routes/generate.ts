@@ -1,6 +1,6 @@
 import { Env, Language } from '../types';
 import { getUserId } from '../lib/auth';
-import { isRateLimited } from '../lib/ratelimit';
+import { isRateLimited } from '../lib/rateLimit';
 import { createPhrase, getPhraseForUser, setCurrentJobForUser } from '../lib/db';
 import { triggerProcessing } from '../lib/modal';
 
