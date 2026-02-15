@@ -145,3 +145,42 @@ export function getFileUrl(path: string): string {
   if (path.startsWith('/')) return `${API_BASE}${path}`; // absolute to API base
   return `${API_BASE}/api/files/${encodeURIComponent(path)}`; // key path
 }
+
+// Generate
+export interface GeneratePhraseRequest {
+  language: 'ru' | 'ar' | 'zh' | 'es' | 'ka';
+  theme: string;
+  num_phrases: number;
+  existing_deck?: string;
+}
+
+export interface GeneratedPhrase {
+  id: string;
+  source_text: string;
+  translation: string;
+}
+
+export async function generatePhrases(
+  request: GeneratePhraseRequest
+): Promise<{ phrases: GeneratedPhrase[] }> {
+  return await apiRequest('/api/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+}
+
+export async function confirmGeneratedPhrases(
+  phraseIds: string[]
+): Promise<{ message: string }> {
+  return await apiRequest('/api/generate/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phrase_ids: phraseIds }),
+  });
+}
+
+// Helper to use the existing request function with a different name internally
+async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
+  return request<T>(path, options);
+}

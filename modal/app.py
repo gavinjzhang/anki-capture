@@ -625,14 +625,14 @@ async def generate_tts_elevenlabs(text: str, language: str) -> bytes:
     # Default voice: "pNInz6obpgDQGcFmaJgB" (Adam - multilingual)
     voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "pNInz6obpgDQGcFmaJgB")
 
-    print(f"ElevenLabs TTS: lang={language}, code={lang_code_2letter}, voice_id={voice_id}")
+    print(f"ElevenLabs TTS: lang={language}, voice_id={voice_id}, model=eleven_v3")
 
-    # Use multilingual v2 model
+    # Use Eleven v3 model - the only model that supports Georgian (plus 70+ other languages)
+    # Don't specify language_code - let the model auto-detect from text
     audio_generator = client.text_to_speech.convert(
         voice_id=voice_id,
         text=text,
-        model_id="eleven_multilingual_v2",
-        language_code=lang_code_2letter,
+        model_id="eleven_v3",
         output_format="mp3_44100_128"
     )
 
@@ -864,3 +864,107 @@ async def trigger(data: dict) -> dict:
     )
     
     return {"status": "processing", "phrase_id": phrase_id}
+
+
+# Web endpoint for phrase generation
+@app.function(
+    image=processing_image,
+    timeout=300,  # 5 minutes for bulk generation
+    secrets=[modal.Secret.from_name("anki-capture-secrets")],
+)
+@modal.fastapi_endpoint(method="POST")
+async def generate_phrases(data: dict) -> dict:
+    """
+    Generate language learning phrases based on theme.
+
+    Args:
+        user_id: User identifier
+        language: Target language code (ru, ar, zh, es, ka)
+        theme: Topic/theme for phrases (e.g., "restaurant", "travel")
+        num_phrases: Number of phrases to generate (1-50)
+        existing_deck: Optional text content to avoid duplicates
+
+    Returns:
+        List of generated phrases with translations
+    """
+    from openai import OpenAI
+
+    user_id = data.get("user_id")
+    language = data.get("language")
+    theme = data.get("theme")
+    num_phrases = data.get("num_phrases", 10)
+    existing_deck = data.get("existing_deck")
+
+    if not user_id or not language or not theme:
+        return {"error": "Missing required fields", "status": "error"}
+
+    # Get language config
+    config = get_language_config(language)
+    if not config:
+        return {"error": f"Unsupported language: {language}", "status": "error"}
+
+    print(f"Generating {num_phrases} {config.name} phrases for user {user_id}, theme: {theme}")
+
+    # Build prompt
+    duplicate_warning = ""
+    if existing_deck:
+        duplicate_warning = f"IMPORTANT: Avoid duplicating these existing phrases:\n{existing_deck}\n\n"
+
+    prompt = f"""Generate {num_phrases} {config.name} phrases for language learning on the theme: "{theme}".
+
+Requirements:
+- Phrases should be natural, commonly used expressions
+- Vary complexity: mix simple and intermediate level
+- Include useful vocabulary for the theme
+- Avoid overly formal or literary language
+- Each phrase should be 3-15 words long
+- Make phrases practical for real conversations
+
+{duplicate_warning}Provide your response as JSON with this structure:
+{{
+  "phrases": [
+    {{"text": "phrase in {config.name}", "translation": "English translation"}},
+    ...
+  ]
+}}
+
+Make phrases diverse and useful. Respond ONLY with valid JSON. No markdown, no code blocks, no extra text."""
+
+    try:
+        # Call GPT
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            return {"error": "OPENAI_API_KEY not configured", "status": "error"}
+
+        client = OpenAI(api_key=api_key)
+
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,  # Higher temperature for variety
+            response_format={"type": "json_object"},
+        )
+
+        result = json.loads(response.choices[0].message.content)
+        phrases_list = result.get("phrases", [])
+
+        if not phrases_list:
+            return {"error": "No phrases generated", "status": "error"}
+
+        print(f"Successfully generated {len(phrases_list)} phrases")
+
+        # Return phrases with IDs
+        return {
+            "phrases": [
+                {
+                    "source_text": p.get("text", ""),
+                    "translation": p.get("translation", ""),
+                }
+                for p in phrases_list
+            ],
+            "status": "success",
+        }
+
+    except Exception as e:
+        print(f"Error generating phrases: {e}")
+        return {"error": str(e), "status": "error"}

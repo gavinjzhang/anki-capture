@@ -1,28 +1,29 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import { listPhrases } from '../lib/api'
+import { useAdaptivePolling } from '../lib/useAdaptivePolling'
 
 export default function ProcessingStatus() {
   const { isLoaded } = useAuth()
   const [processingCount, setProcessingCount] = useState(0)
 
-  useEffect(() => {
-    // Wait for Clerk to be ready before making API calls
-    if (!isLoaded) return
-
-    const checkProcessing = async () => {
-      try {
-        const { phrases } = await listPhrases('processing')
-        setProcessingCount(phrases.length)
-      } catch {
-        // Ignore errors
-      }
+  const checkProcessing = async () => {
+    try {
+      const { phrases } = await listPhrases('processing')
+      setProcessingCount(phrases.length)
+    } catch {
+      // Ignore errors
     }
+  }
 
-    checkProcessing()
-    const interval = setInterval(checkProcessing, 5000)
-    return () => clearInterval(interval)
-  }, [isLoaded])
+  // Only poll fast when there ARE processing jobs, otherwise poll slowly
+  useAdaptivePolling({
+    onPoll: checkProcessing,
+    shouldPollFast: () => processingCount > 0,
+    fastInterval: 5000,   // 5s when processing
+    slowInterval: 60000,  // 60s when idle
+    enabled: isLoaded,
+  })
 
   if (processingCount === 0) return null
 

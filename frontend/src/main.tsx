@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
 import { ClerkProvider, SignedIn, SignedOut, SignInButton, UserButton, useAuth } from '@clerk/clerk-react'
 import { setAuthTokenProvider } from './lib/auth'
 import UploadPage from './pages/Upload'
+import GeneratePage from './pages/Generate'
 import ReviewPage from './pages/Review'
 import LibraryPage from './pages/Library'
 import ExportPage from './pages/Export'
@@ -57,6 +58,7 @@ function App() {
               <div className="hidden md:flex items-center gap-2">
                 {[
                   { to: '/', label: 'Upload' },
+                  { to: '/generate', label: 'Generate' },
                   { to: '/review', label: 'Review' },
                   { to: '/library', label: 'Library' },
                   { to: '/export', label: 'Export' },
@@ -135,6 +137,7 @@ function App() {
             <nav className="flex-1 overflow-y-auto py-4">
               {[
                 { to: '/', label: 'Upload' },
+                { to: '/generate', label: 'Generate' },
                 { to: '/review', label: 'Review' },
                 { to: '/library', label: 'Library' },
                 { to: '/export', label: 'Export' },
@@ -170,6 +173,7 @@ function App() {
         <main className="max-w-6xl mx-auto px-4 py-8 w-full overflow-x-hidden">
           <Routes>
             <Route path="/" element={<UploadPage />} />
+            <Route path="/generate" element={<GeneratePage />} />
             <Route path="/review" element={<ReviewPage />} />
             <Route path="/library" element={<LibraryPage />} />
             <Route path="/export" element={<ExportPage />} />

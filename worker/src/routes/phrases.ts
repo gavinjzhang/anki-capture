@@ -22,7 +22,9 @@ export async function handleListPhrases(
   const url = new URL(request.url);
   const status = url.searchParams.get('status') as PhraseStatus | null;
   const limit = parseInt(url.searchParams.get('limit') || '100', 10);
-  
+
+  console.log('List phrases request', { userId, status, hasAuth: !!request.headers.get('Authorization') });
+
   const phrases = await listPhrasesForUser(env, userId, status || undefined, limit);
   // Attach short-lived signed URLs for any file fields
   const origin = new URL(request.url).origin;
@@ -32,7 +34,11 @@ export async function handleListPhrases(
     audio_url: p.audio_url ? (await buildAbsoluteSignedUrl(env, origin, p.audio_url, ttl)) || p.audio_url : null,
     original_file_url: p.original_file_url ? (await buildAbsoluteSignedUrl(env, origin, p.original_file_url, ttl)) || p.original_file_url : null,
   })));
-  return Response.json({ phrases: signed });
+
+  const response = Response.json({ phrases: signed });
+  // Debug header to see resolved user_id
+  response.headers.set('X-Debug-User-Id', userId);
+  return response;
 }
 
 // GET /api/phrases/:id

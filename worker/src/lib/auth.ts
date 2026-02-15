@@ -6,13 +6,31 @@ const jwksCache: Record<string, ReturnType<typeof createRemoteJWKSet>> = {};
 
 async function verifyClerkToken(token: string, env: Env): Promise<JWTPayload | null> {
   const issuer = env.CLERK_JWT_ISSUER;
-  if (!issuer) return null;
+  if (!issuer) {
+    console.error('[AUTH] CLERK_JWT_ISSUER not set');
+    return null;
+  }
+
   const jwksUrl = env.CLERK_JWKS_URL || `${issuer.replace(/\/$/, '')}/.well-known/jwks.json`;
-  const jwks = jwksCache[jwksUrl] || (jwksCache[jwksUrl] = createRemoteJWKSet(new URL(jwksUrl)));
+
+  // Initialize JWKS fetcher with aggressive caching to prevent intermittent failures
+  if (!jwksCache[jwksUrl]) {
+    jwksCache[jwksUrl] = createRemoteJWKSet(new URL(jwksUrl), {
+      cacheMaxAge: 3600000, // Cache keys for 1 hour to avoid repeated fetches
+      cooldownDuration: 30000, // Wait 30s before retrying failed fetches
+    });
+  }
+
+  const jwks = jwksCache[jwksUrl];
+
   try {
-    const { payload } = await jwtVerify(token, jwks, { issuer });
+    const { payload} = await jwtVerify(token, jwks, {
+      issuer,
+      clockTolerance: 30, // Allow 30 second clock skew (Clerk tokens expire in 60s)
+    });
     return payload;
-  } catch {
+  } catch (err) {
+    console.error('[AUTH] JWT verification failed:', err instanceof Error ? err.message : String(err));
     return null;
   }
 }
