@@ -417,6 +417,7 @@ export default function ReviewPage() {
   const loadSequenceRef = useRef(0)
 
   const [processingPhrases, setProcessingPhrases] = useState<Phrase[]>([])
+  const processingCountRef = useRef(0)
 
   const loadPhrases = useCallback(async () => {
     const currentSeq = ++loadSequenceRef.current
@@ -429,6 +430,7 @@ export default function ReviewPage() {
       if (currentSeq === loadSequenceRef.current) {
         setPhrases(reviewResult.phrases)
         setProcessingPhrases(processingResult.phrases)
+        processingCountRef.current = processingResult.phrases.length
         setError(null) // Clear any previous errors
         setAuthError(false) // Clear auth error on success
       }
@@ -453,7 +455,7 @@ export default function ReviewPage() {
   // Wait for Clerk to be ready before starting polls
   const { pollNow } = useAdaptivePolling({
     onPoll: loadPhrases,
-    shouldPollFast: () => processingPhrases.length > 0,
+    shouldPollFast: () => processingCountRef.current > 0,
     fastInterval: 3000,   // 3 seconds when jobs are processing
     slowInterval: 30000,  // 30 seconds when idle (AWS CloudFormation style)
     enabled: dirtyIds.size === 0, // Pause while editing

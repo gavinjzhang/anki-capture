@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import { listPhrases, Phrase } from '../lib/api'
 import { useAdaptivePolling } from '../lib/useAdaptivePolling'
@@ -28,11 +28,13 @@ export default function ProcessingStatus() {
   const [expanded, setExpanded] = useState(false)
   const [doneToasts, setDoneToasts] = useState<DoneToast[]>([])
   const prevIdsRef = useRef<Set<string>>(new Set())
+  const phraseCountRef = useRef(0)
 
-  const checkProcessing = async () => {
+  const checkProcessing = useCallback(async () => {
     try {
       const { phrases: current } = await listPhrases('processing')
       setPhrases(current)
+      phraseCountRef.current = current.length
 
       // Detect phrases that finished (were processing, now gone)
       const currentIds = new Set(current.map(p => p.id))
@@ -58,7 +60,7 @@ export default function ProcessingStatus() {
     } catch {
       // Ignore errors
     }
-  }
+  }, [])
 
   // Auto-dismiss done toasts
   useEffect(() => {
@@ -72,7 +74,7 @@ export default function ProcessingStatus() {
 
   useAdaptivePolling({
     onPoll: checkProcessing,
-    shouldPollFast: () => phrases.length > 0,
+    shouldPollFast: () => phraseCountRef.current > 0,
     fastInterval: 3000,
     slowInterval: 60000,
     enabled: isLoaded && !!isSignedIn,
