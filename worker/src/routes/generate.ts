@@ -1,5 +1,5 @@
 import { Env, Language } from '../types';
-import { getUserId } from '../lib/auth';
+import { requireAuth } from '../lib/auth';
 import { isRateLimited } from '../lib/rateLimit';
 import { createPhrase, getPhraseForUser, setCurrentJobForUser } from '../lib/db';
 import { triggerProcessing } from '../lib/modal';
@@ -25,7 +25,7 @@ export async function handleGenerate(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const userId = await getUserId(request, env);
+  const userId = await requireAuth(request, env);
 
   // Rate limit check
   const { limited } = await isRateLimited(request, env, 'generate');
@@ -141,22 +141,34 @@ export async function handleConfirmGenerated(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const userId = await getUserId(request, env);
+  const userId = await requireAuth(request, env);
 
-  let body: { phrase_ids: string[] };
+  let body: { phrase_ids: string[]; discard_ids?: string[] };
   try {
     body = await request.json();
   } catch {
     return Response.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { phrase_ids } = body;
+  const { phrase_ids, discard_ids } = body;
 
   if (!phrase_ids || !Array.isArray(phrase_ids) || phrase_ids.length === 0) {
     return Response.json({ error: 'phrase_ids array is required' }, { status: 400 });
   }
 
   try {
+    // Delete discarded draft phrases
+    if (discard_ids && Array.isArray(discard_ids)) {
+      for (const id of discard_ids) {
+        const phrase = await getPhraseForUser(env, userId, id);
+        if (phrase && phrase.exclude_from_export) {
+          await env.DB.prepare('DELETE FROM phrases WHERE id = ? AND user_id = ?')
+            .bind(id, userId)
+            .run();
+        }
+      }
+    }
+
     // Validate all phrases belong to user and are in draft state (exclude_from_export = true)
     for (const id of phrase_ids) {
       const phrase = await getPhraseForUser(env, userId, id);
@@ -214,7 +226,7 @@ export async function handleDeleteDraft(
   env: Env,
   id: string
 ): Promise<Response> {
-  const userId = await getUserId(request, env);
+  const userId = await requireAuth(request, env);
 
   try {
     const phrase = await getPhraseForUser(env, userId, id);

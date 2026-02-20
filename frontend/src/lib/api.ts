@@ -3,6 +3,13 @@
 const API_BASE = (import.meta as any).env?.VITE_API_BASE || '';
 import { getAuthToken } from './auth'
 
+export class AuthError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'AuthError'
+  }
+}
+
 export interface VocabItem {
   word: string;
   root: string | null;
@@ -29,6 +36,7 @@ export interface Phrase {
   job_attempts: number;
   last_error: string | null;
   current_job_id: string | null;
+  processing_step: 'extracting' | 'analyzing' | 'generating_audio' | null;
   created_at: number;
   reviewed_at: number | null;
   exported_at: number | null;
@@ -43,12 +51,35 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
-  
+
+  // On 401, try refreshing the token once and retry
+  if (response.status === 401) {
+    const freshToken = await getAuthToken({ forceRefresh: true })
+    if (!freshToken) {
+      throw new AuthError('Not signed in')
+    }
+    const retryResponse = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers: {
+        ...(options?.headers || {}),
+        Authorization: `Bearer ${freshToken}`,
+      },
+    });
+    if (retryResponse.status === 401) {
+      throw new AuthError('Session expired')
+    }
+    if (!retryResponse.ok) {
+      const error = await retryResponse.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.error || 'Request failed');
+    }
+    return retryResponse.json();
+  }
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Request failed' }));
     throw new Error(error.error || 'Request failed');
   }
-  
+
   return response.json();
 }
 
@@ -56,7 +87,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export async function uploadFile(file: File): Promise<{ id: string; status: string }> {
   const formData = new FormData();
   formData.append('file', file);
-  
+
   return request('/api/upload', {
     method: 'POST',
     body: formData,
@@ -161,26 +192,25 @@ export interface GeneratedPhrase {
 }
 
 export async function generatePhrases(
-  request: GeneratePhraseRequest
+  req: GeneratePhraseRequest
 ): Promise<{ phrases: GeneratedPhrase[] }> {
-  return await apiRequest('/api/generate', {
+  return request('/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
+    body: JSON.stringify(req),
   });
 }
 
 export async function confirmGeneratedPhrases(
-  phraseIds: string[]
+  phraseIds: string[],
+  discardIds?: string[]
 ): Promise<{ message: string }> {
-  return await apiRequest('/api/generate/confirm', {
+  return request('/api/generate/confirm', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ phrase_ids: phraseIds }),
+    body: JSON.stringify({
+      phrase_ids: phraseIds,
+      ...(discardIds && discardIds.length > 0 ? { discard_ids: discardIds } : {}),
+    }),
   });
-}
-
-// Helper to use the existing request function with a different name internally
-async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
-  return request<T>(path, options);
 }

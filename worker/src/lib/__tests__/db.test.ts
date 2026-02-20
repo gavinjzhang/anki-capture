@@ -90,21 +90,19 @@ describe("Database Multi-Tenant Isolation", () => {
       expect(phrase).toBeNull();
     });
 
-    it("returns phrase with NULL user_id (legacy/migration)", async () => {
+    it("does NOT return phrase with NULL user_id (orphaned rows are invisible)", async () => {
       const phraseId = randomId("phrase");
       await env.DB.prepare(`
         INSERT INTO phrases (id, user_id, source_type, source_text, status, created_at)
         VALUES (?, NULL, 'text', 'Legacy phrase', 'processing', ?)
       `).bind(phraseId, Date.now()).run();
 
-      // NULL user_id phrases should be accessible by any user (legacy support)
+      // NULL user_id phrases are orphaned and should NOT be accessible
       const phraseAlice = await getPhraseForUser(env, userAlice, phraseId);
       const phraseBob = await getPhraseForUser(env, userBob, phraseId);
 
-      expect(phraseAlice).toBeTruthy();
-      expect(phraseBob).toBeTruthy();
-      expect(phraseAlice!.id).toBe(phraseId);
-      expect(phraseBob!.id).toBe(phraseId);
+      expect(phraseAlice).toBeNull();
+      expect(phraseBob).toBeNull();
     });
   });
 

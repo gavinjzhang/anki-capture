@@ -38,6 +38,18 @@ export async function handleModalWebhook(
     return Response.json({ received: true, ignored: true });
   }
 
+  // Handle progress updates (non-final)
+  if (payload.type === 'progress' && payload.step) {
+    const STEP_ORDER = ['extracting', 'analyzing', 'generating_audio'];
+    const newIdx = STEP_ORDER.indexOf(payload.step);
+    const curIdx = phrase.processing_step ? STEP_ORDER.indexOf(phrase.processing_step) : -1;
+    // Only advance forward (guard against out-of-order delivery)
+    if (newIdx > curIdx) {
+      await updatePhrase(env, payload.phrase_id, { processing_step: payload.step });
+    }
+    return Response.json({ received: true });
+  }
+
   if (payload.success && payload.result) {
     try {
       // If audio data was included (base64), save it to R2
@@ -67,6 +79,7 @@ export async function handleModalWebhook(
         await updatePhrase(env, payload.phrase_id, {
           source_text: payload.result.source_text,
           audio_url: audioUrl,
+          processing_step: null,
         });
       } else {
         // Full processing: update all fields
@@ -92,10 +105,11 @@ export async function handleModalWebhook(
     // Processing failed - move to review with error message
     console.error('Processing failed', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: payload.phrase_id, error: payload.error });
     
-    await updatePhrase(env, payload.phrase_id, { 
+    await updatePhrase(env, payload.phrase_id, {
       status: 'pending_review',
       grammar_notes: `⚠️ Processing error: ${payload.error}`,
       last_error: payload.error || 'Processing failed',
+      processing_step: null,
     });
   }
   

@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react'
-import { useAuth } from '@clerk/clerk-react'
-import { listPhrases, updatePhrase, deletePhrase as apiDeletePhrase, Phrase } from '../lib/api'
+import { listPhrases, updatePhrase, deletePhrase as apiDeletePhrase, AuthError, Phrase } from '../lib/api'
 import { useAdaptivePolling } from '../lib/useAdaptivePolling'
+import AuthErrorBanner from '../components/AuthErrorBanner'
 
 type StatusFilter = 'all' | 'processing' | 'pending_review' | 'approved' | 'exported'
 
 export default function LibraryPage() {
-  const { isLoaded } = useAuth()
   const [phrases, setPhrases] = useState<Phrase[]>([])
   const [loading, setLoading] = useState(true)
+  const [authError, setAuthError] = useState(false)
   const [filter, setFilter] = useState<StatusFilter>('all')
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [revertingId, setRevertingId] = useState<string | null>(null)
@@ -21,6 +21,11 @@ export default function LibraryPage() {
       const status = filter === 'all' ? undefined : filter
       const { phrases } = await listPhrases(status)
       setPhrases(phrases)
+      setAuthError(false)
+    } catch (err) {
+      if (err instanceof AuthError) {
+        setAuthError(true)
+      }
     } finally {
       if (showLoadingSpinner) {
         setLoading(false)
@@ -35,7 +40,7 @@ export default function LibraryPage() {
     shouldPollFast: () => phrases.some(p => p.status === 'processing'),
     fastInterval: 5000,   // 5 seconds when jobs are processing
     slowInterval: 60000,  // 60 seconds when idle (less critical than Review page)
-    enabled: isLoaded, // Wait for Clerk to load
+    enabled: true,
   })
 
   // Reload when filter changes
@@ -85,6 +90,7 @@ export default function LibraryPage() {
 
   return (
     <div className="space-y-8">
+      {authError && <AuthErrorBanner />}
       <div>
         <h1 className="text-2xl font-semibold mb-2">Library</h1>
         <p className="text-zinc-400">All captured phrases</p>

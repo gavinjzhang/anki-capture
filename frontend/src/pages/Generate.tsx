@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { generatePhrases, confirmGeneratedPhrases, updatePhrase, deletePhrase, type GeneratedPhrase } from '../lib/api'
+import { useNavigate } from 'react-router-dom'
+import { generatePhrases, confirmGeneratedPhrases, updatePhrase, deletePhrase, AuthError, type GeneratedPhrase } from '../lib/api'
 import { useToast } from '../components/Toast'
 
 export default function GeneratePage() {
+  const navigate = useNavigate()
   const [language, setLanguage] = useState<'ru' | 'ar' | 'zh' | 'es' | 'ka'>('ru')
   const [theme, setTheme] = useState('')
   const [numPhrases, setNumPhrases] = useState(10)
@@ -43,7 +45,11 @@ export default function GeneratePage() {
       setSelectedPhrases(new Set(result.phrases.map(p => p.id)))
       showToast(`Generated ${result.phrases.length} phrases!`, 'success')
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Generation failed', 'error')
+      if (err instanceof AuthError) {
+        showToast('Session expired — please sign in again.', 'error')
+      } else {
+        showToast(err instanceof Error ? err.message : 'Generation failed', 'error')
+      }
     } finally {
       setIsGenerating(false)
     }
@@ -130,12 +136,16 @@ export default function GeneratePage() {
 
     setIsProcessing(true)
     try {
-      const result = await confirmGeneratedPhrases(Array.from(selectedPhrases))
+      const discardIds = generatedPhrases
+        .filter(p => !selectedPhrases.has(p.id))
+        .map(p => p.id)
+      const result = await confirmGeneratedPhrases(Array.from(selectedPhrases), discardIds)
       showToast(result.message, 'success')
-      // Clear the generated phrases and reset
+      // Clear the generated phrases and navigate to Review
       setGeneratedPhrases([])
       setSelectedPhrases(new Set())
       setTheme('')
+      navigate('/review')
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Processing failed', 'error')
     } finally {

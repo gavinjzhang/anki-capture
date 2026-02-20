@@ -1,7 +1,7 @@
 import { Env, SourceType, Language } from '../types';
 import { createPhrase, setCurrentJobForUser } from '../lib/db';
 import { uploadFile, generateFileKey, getExtensionFromContentType } from '../lib/r2';
-import { getUserId } from '../lib/auth';
+import { requireAuth } from '../lib/auth';
 import { triggerProcessing, buildFileUrl } from '../lib/modal';
 import { isRateLimited, addRateLimitHeaders } from '../lib/rateLimit';
 
@@ -31,7 +31,7 @@ export async function handleFileUpload(
     );
   }
 
-  const userId = await getUserId(request, env)
+  const userId = await requireAuth(request, env)
   const formData = await request.formData();
   const file = formData.get('file') as File | null;
   
@@ -104,7 +104,7 @@ export async function handleTextUpload(
     );
   }
 
-  const userId = await getUserId(request, env)
+  const userId = await requireAuth(request, env)
   const body = await request.json() as { text?: string; language?: Language };
   
   if (!body.text?.trim()) {

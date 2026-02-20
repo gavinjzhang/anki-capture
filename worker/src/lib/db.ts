@@ -10,6 +10,7 @@ function rowToPhrase(row: PhraseRow): Phrase {
     exclude_from_export: Boolean(row.exclude_from_export),
     job_attempts: row.job_attempts ?? 0,
     current_job_id: row.current_job_id ?? null,
+    processing_step: row.processing_step ?? null,
   };
 }
 
@@ -61,7 +62,7 @@ export async function listPhrases(
 
 // User-scoped helpers (multi-tenant)
 export async function getPhraseForUser(env: Env, userId: string, id: string): Promise<Phrase | null> {
-  const row = await env.DB.prepare('SELECT * FROM phrases WHERE id = ? AND (user_id = ? OR user_id IS NULL)')
+  const row = await env.DB.prepare('SELECT * FROM phrases WHERE id = ? AND user_id = ?')
     .bind(id, userId)
     .first<PhraseRow>();
   return row ? rowToPhrase(row) : null;
@@ -73,7 +74,7 @@ export async function listPhrasesForUser(
   status?: PhraseStatus,
   limit = 100
 ): Promise<Phrase[]> {
-  let query = 'SELECT * FROM phrases WHERE (user_id = ? OR user_id IS NULL)';
+  let query = 'SELECT * FROM phrases WHERE user_id = ?';
   const params: (string | number)[] = [userId];
   if (status) {
     query += ' AND status = ?';
@@ -97,7 +98,7 @@ export async function getExportablePhrases(env: Env): Promise<Phrase[]> {
 export async function getExportablePhrasesForUser(env: Env, userId: string): Promise<Phrase[]> {
   const { results } = await env.DB.prepare(`
     SELECT * FROM phrases 
-    WHERE (user_id = ? OR user_id IS NULL) AND status = 'approved' AND exclude_from_export = 0
+    WHERE user_id = ? AND status = 'approved' AND exclude_from_export = 0
     ORDER BY created_at ASC
   `).bind(userId).all<PhraseRow>();
   return results.map(rowToPhrase);
@@ -128,6 +129,7 @@ export async function updatePhraseFromProcessing(
       language_confidence = ?,
       audio_url = ?,
       last_error = NULL,
+      processing_step = NULL,
       status = 'pending_review'
     WHERE id = ?
   `).bind(
@@ -207,9 +209,13 @@ export async function updatePhrase(
     setClauses.push('last_error = ?');
     values.push(updates.last_error);
   }
-  
+  if (updates.processing_step !== undefined) {
+    setClauses.push('processing_step = ?');
+    values.push(updates.processing_step);
+  }
+
   if (setClauses.length === 0) return;
-  
+
   values.push(id);
   await env.DB.prepare(`UPDATE phrases SET ${setClauses.join(', ')} WHERE id = ?`)
     .bind(...values)
@@ -241,9 +247,10 @@ export async function updatePhraseForUser(
   if (updates.job_started_at !== undefined) { setClauses.push('job_started_at = ?'); values.push(updates.job_started_at); }
   if (updates.job_attempts !== undefined) { setClauses.push('job_attempts = ?'); values.push(updates.job_attempts); }
   if (updates.last_error !== undefined) { setClauses.push('last_error = ?'); values.push(updates.last_error); }
+  if (updates.processing_step !== undefined) { setClauses.push('processing_step = ?'); values.push(updates.processing_step); }
   if (setClauses.length === 0) return;
   values.push(id, userId);
-  await env.DB.prepare(`UPDATE phrases SET ${setClauses.join(', ')} WHERE id = ? AND (user_id = ? OR user_id IS NULL)`).bind(...values).run();
+  await env.DB.prepare(`UPDATE phrases SET ${setClauses.join(', ')} WHERE id = ? AND user_id = ?`).bind(...values).run();
 }
 
 export async function setCurrentJobForUser(env: Env, userId: string, id: string, jobId: string, setStatusProcessing = false): Promise<void> {
@@ -258,7 +265,7 @@ export async function setCurrentJobForUser(env: Env, userId: string, id: string,
     fields.push("status = 'processing'");
   }
   await env.DB.prepare(`
-    UPDATE phrases SET ${fields.join(', ')} WHERE id = ? AND (user_id = ? OR user_id IS NULL)
+    UPDATE phrases SET ${fields.join(', ')} WHERE id = ? AND user_id = ?
   `).bind(...values, id, userId).run();
 }
 
@@ -295,7 +302,7 @@ export async function markPhrasesExportedForUser(env: Env, userId: string, ids: 
   const placeholders = ids.map(() => '?').join(',');
   await env.DB.prepare(`
     UPDATE phrases SET status = 'exported', exported_at = ?
-    WHERE id IN (${placeholders}) AND (user_id = ? OR user_id IS NULL)
+    WHERE id IN (${placeholders}) AND user_id = ?
   `).bind(now, ...ids, userId).run();
 }
 
@@ -304,7 +311,7 @@ export async function deletePhrase(env: Env, id: string): Promise<void> {
 }
 
 export async function deletePhraseForUser(env: Env, userId: string, id: string): Promise<void> {
-  await env.DB.prepare('DELETE FROM phrases WHERE id = ? AND (user_id = ? OR user_id IS NULL)')
+  await env.DB.prepare('DELETE FROM phrases WHERE id = ? AND user_id = ?')
     .bind(id, userId)
     .run();
 }

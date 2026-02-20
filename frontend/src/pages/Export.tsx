@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { useAuth } from '@clerk/clerk-react'
 import JSZip from 'jszip'
-import { getExportPreview, getExportData, markExported, getFileUrl } from '../lib/api'
+import { getExportPreview, getExportData, markExported, getFileUrl, AuthError } from '../lib/api'
+import AuthErrorBanner from '../components/AuthErrorBanner'
 
 interface ExportPreview {
   count: number
@@ -9,10 +9,10 @@ interface ExportPreview {
 }
 
 export default function ExportPage() {
-  const { isLoaded } = useAuth()
   const [preview, setPreview] = useState<ExportPreview | null>(null)
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
+  const [authError, setAuthError] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const loadPreview = async () => {
@@ -20,18 +20,21 @@ export default function ExportPage() {
     try {
       const data = await getExportPreview()
       setPreview(data)
+      setAuthError(false)
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to load export preview' })
+      if (err instanceof AuthError) {
+        setAuthError(true)
+      } else {
+        setMessage({ type: 'error', text: 'Failed to load export preview' })
+      }
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    // Wait for Clerk to be ready before making API calls
-    if (!isLoaded) return
     loadPreview()
-  }, [isLoaded])
+  }, [])
 
   const handleExport = async () => {
     setExporting(true)
@@ -106,6 +109,7 @@ export default function ExportPage() {
 
   return (
     <div className="space-y-8">
+      {authError && <AuthErrorBanner />}
       <div>
         <h1 className="text-2xl font-semibold mb-2">Export</h1>
         <p className="text-zinc-400">Download phrases for Anki import</p>

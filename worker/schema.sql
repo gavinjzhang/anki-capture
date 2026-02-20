@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS phrases (
   job_attempts INTEGER DEFAULT 0,
   last_error TEXT,
   current_job_id TEXT,
+  processing_step TEXT,           -- Current processing step: extracting | analyzing | generating_audio
   created_at INTEGER,
   reviewed_at INTEGER,
   exported_at INTEGER

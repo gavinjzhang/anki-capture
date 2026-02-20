@@ -40,13 +40,18 @@ async function verifyClerkToken(token: string, env: Env): Promise<JWTPayload | n
 // 2) Cloudflare Access email header
 // 3) x-user override (dev/testing)
 // 4) dev@local in development
-// 5) anonymous
-export async function getUserId(request: Request, env: Env): Promise<string> {
+// 5) null (unauthenticated)
+//
+// IMPORTANT: If a Bearer token is present but verification fails,
+// return null immediately — never fall through to weaker identity sources.
+export async function getUserId(request: Request, env: Env): Promise<string | null> {
   const auth = request.headers.get('Authorization');
   if (auth?.startsWith('Bearer ')) {
     const token = auth.slice('Bearer '.length).trim();
     const payload = await verifyClerkToken(token, env);
     if (payload?.sub) return payload.sub;
+    // Bearer token present but invalid — do NOT fall through
+    return null;
   }
 
   const email = request.headers.get('Cf-Access-Authenticated-User-Email');
@@ -56,5 +61,18 @@ export async function getUserId(request: Request, env: Env): Promise<string> {
   if (override) return override.toLowerCase();
 
   if (env.ENVIRONMENT === 'development') return 'dev@local';
-  return 'anonymous';
+  return null;
+}
+
+// Require authentication — throws a 401 Response if no valid user.
+// Use this in all route handlers (except webhooks).
+export async function requireAuth(request: Request, env: Env): Promise<string> {
+  const userId = await getUserId(request, env);
+  if (!userId) {
+    throw Response.json(
+      { error: 'Authentication required', code: 'AUTH_REQUIRED' },
+      { status: 401 }
+    );
+  }
+  return userId;
 }

@@ -1,6 +1,6 @@
 import { Env } from '../types';
 import { getFile } from '../lib/r2';
-import { getUserId } from '../lib/auth';
+import { getUserId } from '../lib/auth';  // getUserId (not requireAuth) — file auth uses signed URLs / Modal secret as primary
 import { verifySignature } from '../lib/signing';
 
 // GET /api/files/:key
@@ -38,11 +38,14 @@ export async function handleGetFile(
       // Check for user authentication
       const hasBearer = request.headers.get('Authorization')?.startsWith('Bearer ');
       const callerEmail = request.headers.get('Cf-Access-Authenticated-User-Email');
-      if (hasBearer || callerEmail) {
+      const hasXUser = request.headers.get('x-user');
+      if (hasBearer || callerEmail || hasXUser) {
         const userId = await getUserId(request, env);
-        const isLegacy = decodedKey.startsWith('original/') || decodedKey.startsWith('audio/');
-        if (!isLegacy && decodedKey.startsWith(`${userId}/`)) {
-          authorized = true;
+        if (userId) {
+          const isLegacy = decodedKey.startsWith('original/') || decodedKey.startsWith('audio/');
+          if (!isLegacy && decodedKey.startsWith(`${userId}/`)) {
+            authorized = true;
+          }
         }
       }
     }

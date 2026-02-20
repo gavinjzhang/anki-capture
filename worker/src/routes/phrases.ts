@@ -8,7 +8,7 @@ import {
 } from '../lib/db';
 import { deleteFile } from '../lib/r2';
 import { triggerProcessing, buildFileUrl } from '../lib/modal';
-import { getUserId } from '../lib/auth';
+import { requireAuth } from '../lib/auth';
 import { setCurrentJobForUser } from '../lib/db';
 import { buildAbsoluteSignedUrl } from '../lib/signing';
 import { isRateLimited, addRateLimitHeaders } from '../lib/rateLimit';
@@ -18,7 +18,7 @@ export async function handleListPhrases(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const userId = await getUserId(request, env);
+  const userId = await requireAuth(request, env);
   const url = new URL(request.url);
   const status = url.searchParams.get('status') as PhraseStatus | null;
   const limit = parseInt(url.searchParams.get('limit') || '100', 10);
@@ -47,7 +47,7 @@ export async function handleGetPhrase(
   env: Env,
   id: string
 ): Promise<Response> {
-  const userId = await getUserId(request, env);
+  const userId = await requireAuth(request, env);
   const phrase = await getPhraseForUser(env, userId, id);
   
   if (!phrase) {
@@ -70,7 +70,7 @@ export async function handleUpdatePhrase(
   env: Env,
   id: string
 ): Promise<Response> {
-  const userId = await getUserId(request, env);
+  const userId = await requireAuth(request, env);
   const phrase = await getPhraseForUser(env, userId, id);
   
   if (!phrase) {
@@ -146,7 +146,7 @@ export async function handleApprovePhrase(
     );
   }
 
-  const userId = await getUserId(request, env);
+  const userId = await requireAuth(request, env);
   const phrase = await getPhraseForUser(env, userId, id);
   
   if (!phrase) {
@@ -185,7 +185,7 @@ export async function handleRegenerateAudio(
     );
   }
 
-  const userId = await getUserId(request, env);
+  const userId = await requireAuth(request, env);
   const phrase = await getPhraseForUser(env, userId, id);
   
   if (!phrase) {
@@ -254,7 +254,7 @@ export async function handleRetryPhrase(
     );
   }
 
-  const userId = await getUserId(request, env);
+  const userId = await requireAuth(request, env);
   const phrase = await getPhraseForUser(env, userId, id);
   if (!phrase) {
     return Response.json({ error: 'Phrase not found' }, { status: 404 });
@@ -285,7 +285,7 @@ export async function handleDeletePhrase(
   env: Env,
   id: string
 ): Promise<Response> {
-  const userId = await getUserId(request, env);
+  const userId = await requireAuth(request, env);
   const phrase = await getPhraseForUser(env, userId, id);
   
   if (!phrase) {

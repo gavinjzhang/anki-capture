@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getUserId } from "../auth";
+import { getUserId, requireAuth } from "../auth";
 import type { Env } from "../../types";
 
 /**
@@ -10,7 +10,12 @@ import type { Env } from "../../types";
  * 2. Cloudflare Access email header
  * 3. x-user override (dev/testing)
  * 4. dev@local in development
- * 5. anonymous
+ * 5. null (unauthenticated)
+ *
+ * Also tests requireAuth which throws 401 when getUserId returns null.
+ *
+ * CRITICAL: When a Bearer token is present but invalid, getUserId returns
+ * null immediately — it does NOT fall through to weaker identity sources.
  */
 
 describe("Auth Layer", () => {
@@ -33,10 +38,10 @@ describe("Auth Layer", () => {
   };
 
   describe("Fallback Priority Order", () => {
-    it("returns anonymous when no auth headers provided (production)", async () => {
+    it("returns null when no auth headers provided (production)", async () => {
       const request = new Request("http://example.com");
       const userId = await getUserId(request, mockEnvProd as Env);
-      expect(userId).toBe("anonymous");
+      expect(userId).toBeNull();
     });
 
     it("returns dev@local when no auth headers provided (development)", async () => {
@@ -115,8 +120,8 @@ describe("Auth Layer", () => {
     });
   });
 
-  describe("JWT Verification (Mocked)", () => {
-    it("falls back when JWT verification fails (invalid token)", async () => {
+  describe("JWT Verification — Invalid Bearer Does NOT Fall Through", () => {
+    it("returns null when JWT verification fails (invalid token), even with x-user present", async () => {
       const request = new Request("http://example.com", {
         headers: {
           Authorization: "Bearer INVALID_TOKEN",
@@ -124,22 +129,13 @@ describe("Auth Layer", () => {
         },
       });
       const userId = await getUserId(request, mockEnvProd as Env);
-      // Should fall back to x-user since JWT verification fails
-      expect(userId).toBe("fallback-user");
+      // CRITICAL: Must NOT fall through to x-user
+      expect(userId).toBeNull();
     });
 
-    it("falls back when JWT verification fails (malformed bearer)", async () => {
-      const request = new Request("http://example.com", {
-        headers: {
-          Authorization: "InvalidFormat",
-          "x-user": "fallback-user",
-        },
-      });
-      const userId = await getUserId(request, mockEnvProd as Env);
-      expect(userId).toBe("fallback-user");
-    });
-
-    it("falls back when JWT verification fails (empty token)", async () => {
+    it("falls through when Bearer header has empty token (Fetch API trims trailing space)", async () => {
+      // "Bearer " gets normalized to "Bearer" by Fetch API header parsing,
+      // which does NOT match startsWith("Bearer "), so falls through.
       const request = new Request("http://example.com", {
         headers: {
           Authorization: "Bearer ",
@@ -150,7 +146,7 @@ describe("Auth Layer", () => {
       expect(userId).toBe("fallback-user");
     });
 
-    it("falls back when Clerk issuer not configured", async () => {
+    it("returns null when Clerk issuer not configured and Bearer present", async () => {
       const request = new Request("http://example.com", {
         headers: {
           Authorization: "Bearer VALID_TOKEN",
@@ -158,13 +154,23 @@ describe("Auth Layer", () => {
         },
       });
       const userId = await getUserId(request, mockEnvNoClerk as Env);
-      // Should fall back since Clerk is not configured
-      expect(userId).toBe("fallback-user");
+      expect(userId).toBeNull();
+    });
+
+    it("returns null when JWT fails, even with CF Access email present", async () => {
+      const request = new Request("http://example.com", {
+        headers: {
+          Authorization: "Bearer INVALID_TOKEN",
+          "Cf-Access-Authenticated-User-Email": "cf-user@example.com",
+        },
+      });
+      const userId = await getUserId(request, mockEnvProd as Env);
+      expect(userId).toBeNull();
     });
   });
 
   describe("Authorization Header Parsing", () => {
-    it("handles Authorization header without Bearer prefix", async () => {
+    it("falls through when Authorization header has non-Bearer prefix", async () => {
       const request = new Request("http://example.com", {
         headers: {
           Authorization: "SomeOtherScheme token",
@@ -172,19 +178,7 @@ describe("Auth Layer", () => {
         },
       });
       const userId = await getUserId(request, mockEnvProd as Env);
-      // Should fall back since it's not Bearer
-      expect(userId).toBe("fallback-user");
-    });
-
-    it("trims Bearer token correctly", async () => {
-      const request = new Request("http://example.com", {
-        headers: {
-          Authorization: "Bearer    TOKEN_WITH_SPACES   ",
-          "x-user": "fallback-user",
-        },
-      });
-      const userId = await getUserId(request, mockEnvProd as Env);
-      // Will fail verification but proves trimming works
+      // Not a Bearer token, so falls through to x-user
       expect(userId).toBe("fallback-user");
     });
 
@@ -203,7 +197,7 @@ describe("Auth Layer", () => {
     it("handles request with no headers at all", async () => {
       const request = new Request("http://example.com");
       const userId = await getUserId(request, mockEnvProd as Env);
-      expect(userId).toBe("anonymous");
+      expect(userId).toBeNull();
     });
 
     it("handles empty string values in headers", async () => {
@@ -240,20 +234,20 @@ describe("Auth Layer", () => {
       expect(userId).toBe("dev@local");
     });
 
-    it("production environment defaults to anonymous", async () => {
+    it("production environment defaults to null", async () => {
       const request = new Request("http://example.com");
       const userId = await getUserId(request, mockEnvProd as Env);
-      expect(userId).toBe("anonymous");
+      expect(userId).toBeNull();
     });
 
-    it("staging environment (not dev) defaults to anonymous", async () => {
+    it("staging environment (not dev) defaults to null", async () => {
       const mockEnvStaging = {
         ...mockEnvProd,
         ENVIRONMENT: "staging",
       };
       const request = new Request("http://example.com");
       const userId = await getUserId(request, mockEnvStaging as Env);
-      expect(userId).toBe("anonymous");
+      expect(userId).toBeNull();
     });
   });
 
@@ -288,6 +282,53 @@ describe("Auth Layer", () => {
       expect(userId1).toBe("alice@example.com");
       expect(userId2).toBe("bob@example.com");
       expect(userId1).not.toBe(userId2);
+    });
+  });
+
+  describe("requireAuth", () => {
+    it("returns user ID when authenticated", async () => {
+      const request = new Request("http://example.com", {
+        headers: { "x-user": "test-user" },
+      });
+      const userId = await requireAuth(request, mockEnvProd as Env);
+      expect(userId).toBe("test-user");
+    });
+
+    it("throws 401 Response when unauthenticated (production)", async () => {
+      const request = new Request("http://example.com");
+      try {
+        await requireAuth(request, mockEnvProd as Env);
+        expect.unreachable("Should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(Response);
+        const response = err as Response;
+        expect(response.status).toBe(401);
+        const body = await response.json() as { error: string; code: string };
+        expect(body.error).toBe("Authentication required");
+        expect(body.code).toBe("AUTH_REQUIRED");
+      }
+    });
+
+    it("throws 401 when Bearer token is invalid", async () => {
+      const request = new Request("http://example.com", {
+        headers: {
+          Authorization: "Bearer INVALID_TOKEN",
+          "x-user": "fallback-user",
+        },
+      });
+      try {
+        await requireAuth(request, mockEnvProd as Env);
+        expect.unreachable("Should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(Response);
+        expect((err as Response).status).toBe(401);
+      }
+    });
+
+    it("succeeds in development with no auth headers (dev@local)", async () => {
+      const request = new Request("http://example.com");
+      const userId = await requireAuth(request, mockEnvDev as Env);
+      expect(userId).toBe("dev@local");
     });
   });
 });

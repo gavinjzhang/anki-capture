@@ -1,7 +1,7 @@
 import { Env, Phrase, VocabItem } from '../types';
 import { getExportablePhrasesForUser, markPhrasesExportedForUser } from '../lib/db';
 import { getFile } from '../lib/r2';
-import { getUserId } from '../lib/auth';
+import { requireAuth } from '../lib/auth';
 import { buildAbsoluteSignedUrl } from '../lib/signing';
 
 function formatVocabBreakdown(vocab: VocabItem[] | null): string {
@@ -39,7 +39,7 @@ export async function handleExport(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const userId = await getUserId(request, env);
+  const userId = await requireAuth(request, env);
   const phrases = await getExportablePhrasesForUser(env, userId);
   
   if (phrases.length === 0) {
@@ -74,7 +74,7 @@ export async function handleExportComplete(
   env: Env
 ): Promise<Response> {
   const body = await request.json() as { phrase_ids: string[] };
-  const userId = await getUserId(request, env);
+  const userId = await requireAuth(request, env);
   
   if (!body.phrase_ids?.length) {
     return Response.json({ error: 'No phrase IDs provided' }, { status: 400 });
@@ -93,7 +93,7 @@ export async function handleExportPreview(
   request: Request,
   env: Env
 ): Promise<Response> {
-  const userId = await getUserId(request, env);
+  const userId = await requireAuth(request, env);
   const phrases = await getExportablePhrasesForUser(env, userId);
   
   return Response.json({

@@ -9,6 +9,7 @@ import ReviewPage from './pages/Review'
 import LibraryPage from './pages/Library'
 import ExportPage from './pages/Export'
 import ProcessingStatus from './components/ProcessingStatus'
+import RequireAuth from './components/RequireAuth'
 import { ToastProvider } from './components/Toast'
 import './index.css'
 
@@ -24,12 +25,12 @@ function AuthWire() {
   // Set up token provider ONCE on mount
   // Provider reads from ref to get current auth state (avoiding stale closures)
   React.useEffect(() => {
-    setAuthTokenProvider(async () => {
+    setAuthTokenProvider(async (opts) => {
       const current = authRef.current
       if (!current.isLoaded) return null
       if (!current.isSignedIn) return null
       try {
-        return await current.getToken()
+        return await current.getToken(opts?.forceRefresh ? { skipCache: true } : undefined)
       } catch {
         return null
       }
@@ -172,11 +173,11 @@ function App() {
 
         <main className="max-w-6xl mx-auto px-4 py-8 w-full overflow-x-hidden">
           <Routes>
-            <Route path="/" element={<UploadPage />} />
-            <Route path="/generate" element={<GeneratePage />} />
-            <Route path="/review" element={<ReviewPage />} />
-            <Route path="/library" element={<LibraryPage />} />
-            <Route path="/export" element={<ExportPage />} />
+            <Route path="/" element={<RequireAuth><UploadPage /></RequireAuth>} />
+            <Route path="/generate" element={<RequireAuth><GeneratePage /></RequireAuth>} />
+            <Route path="/review" element={<RequireAuth><ReviewPage /></RequireAuth>} />
+            <Route path="/library" element={<RequireAuth><LibraryPage /></RequireAuth>} />
+            <Route path="/export" element={<RequireAuth><ExportPage /></RequireAuth>} />
           </Routes>
         </main>
         <AuthWire />

@@ -29,6 +29,7 @@ beforeAll(async () => {
       job_attempts INTEGER DEFAULT 0,
       last_error TEXT,
       current_job_id TEXT,
+      processing_step TEXT,
       created_at INTEGER,
       reviewed_at INTEGER,
       exported_at INTEGER

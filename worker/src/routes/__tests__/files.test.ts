@@ -34,8 +34,7 @@ describe("Files Route", () => {
       ...options,
       headers: {
         ...options.headers,
-        Authorization: "Bearer fake-token", // Needed for file access auth check
-        "x-user": userId, // Will be used by getUserId in dev mode
+        "x-user": userId, // Used by getUserId in dev mode
         "x-request-id": crypto.randomUUID(),
       },
     });
@@ -157,7 +156,7 @@ describe("Files Route", () => {
       expect(response.status).toBe(403);
     });
 
-    it("uses Bearer token for authentication", async () => {
+    it("rejects access when Bearer token is invalid (does not fall through)", async () => {
       const fileKey = `${userAlice}/audio/${randomId()}.mp3`;
       await uploadFile(env, fileKey, new TextEncoder().encode("content"), "audio/mpeg");
 
@@ -166,14 +165,15 @@ describe("Files Route", () => {
         {
           headers: {
             Authorization: `Bearer fake-jwt-token`,
-            "x-user": userAlice, // Will be used by getUserId in dev mode
+            "x-user": userAlice, // Should NOT fall through to x-user
           },
         }
       );
 
       const response = await handleGetFile(request, env, fileKey);
 
-      expect(response.status).toBe(200);
+      // Invalid Bearer token returns null from getUserId — no namespace match
+      expect(response.status).toBe(403);
     });
 
     it("uses Cloudflare Access email for authentication", async () => {

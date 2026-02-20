@@ -117,6 +117,13 @@ export default {
             headers,
           });
         } catch (error) {
+          // requireAuth() throws a Response — forward it with CORS headers
+          if (error instanceof Response) {
+            const headers = new Headers(error.headers);
+            Object.entries(corsHeaders(env, origin)).forEach(([k, v]) => headers.set(k, v));
+            headers.set('x-request-id', requestId);
+            return new Response(error.body, { status: error.status, headers });
+          }
           console.error('Route error', { request_id: requestId, path, error: error instanceof Error ? error.message : String(error) });
           return Response.json(
             { error: error instanceof Error ? error.message : 'Internal error' },

@@ -721,15 +721,31 @@ async def process_upload(
     webhook_url: str,
     webhook_secret: str,
     audio_only: bool = False,
+    job_id: Optional[str] = None,
 ) -> None:
     """Main processing pipeline - orchestrates all steps.
 
     If audio_only is True, only regenerates audio (skips breakdown generation).
     """
-    
+
+    def send_progress(step: str):
+        """Fire-and-forget progress update."""
+        try:
+            httpx.post(
+                webhook_url,
+                json={"phrase_id": phrase_id, "type": "progress", "step": step, "job_id": job_id},
+                headers={"Authorization": f"Bearer {webhook_secret}"},
+                timeout=5,
+            )
+        except Exception:
+            pass  # Non-critical
+
     try:
         print(f"Processing {phrase_id}: type={source_type}, lang={language}")
-        
+
+        # Progress: extracting text
+        send_progress("extracting")
+
         # Step 1: Extract text
         if source_type == "audio":
             print(f"Transcribing audio from {file_url}")
@@ -762,11 +778,17 @@ async def process_upload(
         extracted_text = extracted_text.strip()
         print(f"Extracted text: {extracted_text[:100]}...")
 
+        # Progress: analyzing
+        send_progress("analyzing")
+
         # Step 2: Generate breakdown (skip if audio_only)
         breakdown = None
         if not audio_only:
             print(f"Generating breakdown for {detected_language}")
             breakdown = generate_breakdown.remote(extracted_text, detected_language)
+
+        # Progress: generating audio
+        send_progress("generating_audio")
 
         # Step 3: Generate TTS (for images and text; audio input already has audio)
         audio_b64 = None
@@ -861,6 +883,7 @@ async def trigger(data: dict) -> dict:
         webhook_url=data["webhook_url"],
         webhook_secret=data["webhook_secret"],
         audio_only=data.get("audio_only", False),
+        job_id=data.get("job_id"),
     )
     
     return {"status": "processing", "phrase_id": phrase_id}

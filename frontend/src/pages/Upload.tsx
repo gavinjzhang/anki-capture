@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { uploadFile, uploadText } from '../lib/api'
+import { uploadFile, uploadText, AuthError } from '../lib/api'
 
 type InputMode = 'image' | 'audio' | 'text'
 type AudioInputMode = 'upload' | 'record'
@@ -54,7 +54,11 @@ export default function UploadPage() {
         setRecentUploads(prev => [result.id, ...prev.slice(0, 19)])
       } catch (err) {
         console.error('Upload failed for', file.name, err)
-        setMessage({ type: 'error', text: `Some files failed to upload (e.g., ${file.name})` })
+        if (err instanceof AuthError) {
+          setMessage({ type: 'error', text: 'Session expired — please sign in again.' })
+        } else {
+          setMessage({ type: 'error', text: `Some files failed to upload (e.g., ${file.name})` })
+        }
       } finally {
         setUploadDone(done => done + 1)
         await runNext()
@@ -85,7 +89,11 @@ export default function UploadPage() {
       setMessage({ type: 'success', text: 'Processing started! Check Review page shortly.' })
       setText('')
     } catch (err) {
-      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Upload failed' })
+      if (err instanceof AuthError) {
+        setMessage({ type: 'error', text: 'Session expired — please sign in again.' })
+      } else {
+        setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Upload failed' })
+      }
     } finally {
       setUploading(false)
     }

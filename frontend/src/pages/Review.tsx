@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useAuth } from '@clerk/clerk-react'
 import {
   listPhrases,
   updatePhrase,
@@ -8,11 +7,13 @@ import {
   regenerateAudio,
   retryPhrase,
   getFileUrl,
+  AuthError,
   Phrase,
   VocabItem
 } from '../lib/api'
 import { useAdaptivePolling } from '../lib/useAdaptivePolling'
 import { useToast } from '../components/Toast'
+import AuthErrorBanner from '../components/AuthErrorBanner'
 
 function VocabTable({ 
   vocab, 
@@ -400,10 +401,10 @@ function PhraseCard({
 }
 
 export default function ReviewPage() {
-  const { isLoaded } = useAuth()
   const [phrases, setPhrases] = useState<Phrase[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [authError, setAuthError] = useState(false)
   const [approvingAll, setApprovingAll] = useState(false)
   const [approvedCount, setApprovedCount] = useState(0)
   const [regeneratingIds, setRegeneratingIds] = useState<Set<string>>(new Set())
@@ -415,19 +416,30 @@ export default function ReviewPage() {
   // Prevent race conditions: track request sequence number
   const loadSequenceRef = useRef(0)
 
+  const [processingPhrases, setProcessingPhrases] = useState<Phrase[]>([])
+
   const loadPhrases = useCallback(async () => {
     const currentSeq = ++loadSequenceRef.current
     try {
-      const { phrases } = await listPhrases('pending_review')
+      const [reviewResult, processingResult] = await Promise.all([
+        listPhrases('pending_review'),
+        listPhrases('processing'),
+      ])
       // Only update if this is still the latest request
       if (currentSeq === loadSequenceRef.current) {
-        setPhrases(phrases)
+        setPhrases(reviewResult.phrases)
+        setProcessingPhrases(processingResult.phrases)
         setError(null) // Clear any previous errors
+        setAuthError(false) // Clear auth error on success
       }
     } catch (err) {
       // Only update error if this is still the latest request
       if (currentSeq === loadSequenceRef.current) {
-        setError(err instanceof Error ? err.message : 'Failed to load phrases')
+        if (err instanceof AuthError) {
+          setAuthError(true)
+        } else {
+          setError(err instanceof Error ? err.message : 'Failed to load phrases')
+        }
       }
     } finally {
       if (currentSeq === loadSequenceRef.current) {
@@ -441,10 +453,10 @@ export default function ReviewPage() {
   // Wait for Clerk to be ready before starting polls
   const { pollNow } = useAdaptivePolling({
     onPoll: loadPhrases,
-    shouldPollFast: () => phrases.some(p => p.status === 'processing'),
+    shouldPollFast: () => processingPhrases.length > 0,
     fastInterval: 3000,   // 3 seconds when jobs are processing
     slowInterval: 30000,  // 30 seconds when idle (AWS CloudFormation style)
-    enabled: isLoaded && dirtyIds.size === 0, // Wait for Clerk to load and pause while editing
+    enabled: dirtyIds.size === 0, // Pause while editing
   })
 
   const handleUpdate = async (id: string, updates: Partial<Phrase>) => {
@@ -599,6 +611,7 @@ export default function ReviewPage() {
 
   return (
     <div className="space-y-8">
+      {authError && <AuthErrorBanner />}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold mb-2">Review</h1>
@@ -624,6 +637,38 @@ export default function ReviewPage() {
           </button>
         </div>
       </div>
+
+      {processingPhrases.length > 0 && (
+        <div className="space-y-2">
+          {processingPhrases.map(p => {
+            const STEP_INFO: Record<string, { label: string; num: number }> = {
+              extracting: { label: 'Extracting text', num: 1 },
+              analyzing: { label: 'Analyzing', num: 2 },
+              generating_audio: { label: 'Generating audio', num: 3 },
+            }
+            const step = p.processing_step ? STEP_INFO[p.processing_step] : null
+            return (
+              <div key={p.id} className="bg-zinc-900/50 border border-zinc-800 rounded-lg px-4 py-3 flex items-center gap-3">
+                <div className="relative flex-shrink-0">
+                  <div className="w-2.5 h-2.5 bg-yellow-500 rounded-full animate-pulse" />
+                </div>
+                <span className="text-sm text-zinc-400 truncate flex-1">
+                  {p.source_text
+                    ? p.source_text.slice(0, 50) + (p.source_text.length > 50 ? '...' : '')
+                    : p.source_type === 'image' ? 'Image upload'
+                    : p.source_type === 'audio' ? 'Audio upload'
+                    : 'Text input'}
+                </span>
+                <span className="text-xs text-zinc-500 flex-shrink-0">
+                  {step
+                    ? `Step ${step.num}/3 — ${step.label}...`
+                    : 'Processing...'}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {dirtyIds.size > 0 && (
         <div className="px-4 py-3 bg-amber-500/10 text-amber-300 border border-amber-500/30 rounded-lg">
