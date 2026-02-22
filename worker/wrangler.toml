@@ -13,7 +13,7 @@ invocation_logs = true
 [vars]
 # MODAL_WEBHOOK_SECRET should be set via `wrangler secret put MODAL_WEBHOOK_SECRET`
 # FILE_URL_SIGNING_SECRET should be set via `wrangler secret put FILE_URL_SIGNING_SECRET`
-CLERK_JWT_ISSUER = "https://thankful-vulture-59.clerk.accounts.dev"
+CLERK_JWT_ISSUER = "https://clerk.ankicapture.com"
 MODAL_ENDPOINT = "https://gavinjzhang--anki-capture-trigger.modal.run"
 MODAL_GENERATE_ENDPOINT = "https://gavinjzhang--anki-capture-generate-phrases.modal.run"
 ALLOWED_ORIGINS = "*"  # Allow all origins (change to specific domain in production)
@@ -32,7 +32,7 @@ preview_bucket_name = "anki-capture-files-dev"
 [env.dev]
 [env.dev.vars]
 ENVIRONMENT = "development"
-CLERK_JWT_ISSUER = "https://thankful-vulture-59.clerk.accounts.dev"
+CLERK_JWT_ISSUER = "https://clerk.ankicapture.com"
 MODAL_ENDPOINT = "https://gavinjzhang--anki-capture-trigger.modal.run"
 MODAL_GENERATE_ENDPOINT = "https://gavinjzhang--anki-capture-generate-phrases.modal.run"
 ALLOWED_ORIGINS = "*"
@@ -51,7 +51,7 @@ preview_bucket_name = "anki-capture-files-dev"
 [env.production]
 [env.production.vars]
 ENVIRONMENT = "production"
-CLERK_JWT_ISSUER = "https://YOUR-APP.clerk.accounts.dev"  # Replace with your production Clerk issuer
+CLERK_JWT_ISSUER = "https://clerk.ankicapture.com"
 MODAL_ENDPOINT = "https://gavinjzhang--anki-capture-trigger.modal.run"
 MODAL_GENERATE_ENDPOINT = "https://gavinjzhang--anki-capture-generate-phrases.modal.run"
 ALLOWED_ORIGINS = "https://anki-capture.pages.dev"  # Replace with your actual frontend URL
