@@ -36,6 +36,18 @@ beforeAll(async () => {
     )
   `).run();
 
+  // Create user_settings table
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS user_settings (
+      user_id TEXT PRIMARY KEY,
+      openai_api_key_encrypted TEXT,
+      openai_api_key_iv TEXT,
+      openai_api_key_mask TEXT,
+      created_at INTEGER,
+      updated_at INTEGER
+    )
+  `).run();
+
   // Create indexes
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_phrases_status ON phrases(status)`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_phrases_created ON phrases(created_at)`).run();
@@ -46,6 +58,7 @@ beforeAll(async () => {
 // Clear database between tests
 beforeEach(async () => {
   await env.DB.prepare("DELETE FROM phrases").run();
+  await env.DB.prepare("DELETE FROM user_settings").run();
 });
 
 afterEach(async () => {

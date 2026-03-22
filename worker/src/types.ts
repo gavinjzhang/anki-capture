@@ -11,6 +11,7 @@ export interface Env {
   MAX_ORPHAN_SWEEP?: string; // optional, default 50 per run
   MIN_ORPHAN_AGE_MS?: string; // optional, default 24h
   FILE_URL_SIGNING_SECRET?: string; // HMAC secret for signed /api/files URLs
+  USER_KEY_ENCRYPTION_SECRET?: string; // AES-256-GCM key for encrypting user API keys
   ALLOWED_ORIGINS?: string; // Comma-separated list of allowed CORS origins
 }
 

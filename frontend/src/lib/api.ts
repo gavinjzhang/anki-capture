@@ -169,6 +169,27 @@ export async function markExported(phraseIds: string[]): Promise<void> {
   });
 }
 
+// Settings
+export interface UserSettings {
+  openai_api_key_mask: string | null;
+}
+
+export async function getSettings(): Promise<UserSettings> {
+  return request('/api/settings');
+}
+
+export async function updateOpenAIKey(apiKey: string): Promise<UserSettings & { validated: boolean }> {
+  return request('/api/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ openai_api_key: apiKey }),
+  });
+}
+
+export async function deleteOpenAIKey(): Promise<{ success: boolean }> {
+  return request('/api/settings', { method: 'DELETE' });
+}
+
 // Files
 export function getFileUrl(path: string): string {
   if (!path) return '';

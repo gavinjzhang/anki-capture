@@ -524,6 +524,50 @@ def ocr_image(image_url: str) -> dict:
     }
 
 
+class OpenAIUserError(Exception):
+    """Non-retryable OpenAI error with a user-friendly message.
+
+    Raised instead of raw OpenAI exceptions so that:
+    1. Modal's retries=2 won't retry auth/billing failures
+    2. The error message sent via webhook is clean and actionable
+    """
+    pass
+
+
+def _handle_openai_error(e: Exception, is_user_key: bool) -> str:
+    """Convert OpenAI SDK exceptions into clear, actionable error messages."""
+    from openai import AuthenticationError, RateLimitError, APIStatusError, APIConnectionError, APITimeoutError
+
+    key_hint = " Check your API key in Settings." if is_user_key else ""
+
+    if isinstance(e, AuthenticationError):
+        if is_user_key:
+            return "Your OpenAI API key is invalid or has been revoked. Please update it in Settings."
+        return "OpenAI authentication failed. Please contact support."
+
+    if isinstance(e, RateLimitError):
+        err_body = getattr(e, 'body', {}) or {}
+        err_detail = err_body.get('error', {}) if isinstance(err_body, dict) else {}
+        code = err_detail.get('code', '') if isinstance(err_detail, dict) else ''
+
+        if code == 'insufficient_quota':
+            if is_user_key:
+                return "Your OpenAI API key has exceeded its quota. Please check your billing at platform.openai.com."
+            return "OpenAI quota exceeded. Please try again later or add your own API key in Settings."
+        return f"OpenAI rate limit reached. Please wait a moment and retry.{key_hint}"
+
+    if isinstance(e, APITimeoutError):
+        return "OpenAI request timed out. Please retry."
+
+    if isinstance(e, APIConnectionError):
+        return "Could not connect to OpenAI. Please retry."
+
+    if isinstance(e, APIStatusError):
+        return f"OpenAI API error ({e.status_code}): {e.message[:200]}{key_hint}"
+
+    return f"OpenAI error: {str(e)[:200]}{key_hint}"
+
+
 @app.function(
     image=processing_image,
     timeout=180,
@@ -533,13 +577,15 @@ def ocr_image(image_url: str) -> dict:
 def generate_breakdown(
     source_text: str,
     language: str,
+    openai_api_key: Optional[str] = None,
 ) -> dict:
     """Generate translation, transliteration, and grammar/vocab breakdown."""
     from openai import OpenAI
 
-    api_key = os.environ.get("OPENAI_API_KEY")
+    is_user_key = openai_api_key is not None
+    api_key = openai_api_key or os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        raise Exception("OPENAI_API_KEY not configured")
+        raise Exception("No OpenAI API key available. Please add your own key in Settings.")
 
     client = OpenAI(api_key=api_key)
 
@@ -571,6 +617,8 @@ Be thorough but concise. This is for an intermediate language learner who wants 
 
 Respond ONLY with valid JSON. No markdown, no code blocks, no extra text."""
 
+    from openai import AuthenticationError, RateLimitError, APIStatusError
+
     for attempt in range(3):
         try:
             response = client.chat.completions.create(
@@ -579,15 +627,18 @@ Respond ONLY with valid JSON. No markdown, no code blocks, no extra text."""
                 temperature=0.3,
                 response_format={"type": "json_object"},
             )
-            
+
             result = json.loads(response.choices[0].message.content)
-            
+
             # Validate required fields
             if not all(k in result for k in ["transliteration", "translation", "grammar_notes", "vocab_breakdown"]):
                 raise ValueError("Missing required fields in response")
-            
+
             return result
-            
+
+        except (AuthenticationError, RateLimitError, APIStatusError) as e:
+            # Don't retry auth/billing errors — they won't self-resolve
+            raise OpenAIUserError(_handle_openai_error(e, is_user_key))
         except json.JSONDecodeError as e:
             if attempt == 2:
                 raise Exception(f"Failed to parse LLM response as JSON: {e}")
@@ -722,6 +773,7 @@ async def process_upload(
     webhook_secret: str,
     audio_only: bool = False,
     job_id: Optional[str] = None,
+    openai_api_key: Optional[str] = None,
 ) -> None:
     """Main processing pipeline - orchestrates all steps.
 
@@ -785,7 +837,7 @@ async def process_upload(
         breakdown = None
         if not audio_only:
             print(f"Generating breakdown for {detected_language}")
-            breakdown = generate_breakdown.remote(extracted_text, detected_language)
+            breakdown = generate_breakdown.remote(extracted_text, detected_language, openai_api_key)
 
         # Progress: generating audio
         send_progress("generating_audio")
@@ -837,15 +889,16 @@ async def process_upload(
         print(f"Successfully processed {phrase_id}")
         
     except Exception as e:
-        print(f"Error processing {phrase_id}: {e}")
-        
-        # Report error
+        error_msg = str(e)
+        print(f"Error processing {phrase_id}: {error_msg}")
+
+        # Report error via webhook
         error_payload = {
             "phrase_id": phrase_id,
             "success": False,
-            "error": str(e),
+            "error": error_msg,
         }
-        
+
         try:
             httpx.post(
                 webhook_url,
@@ -855,7 +908,14 @@ async def process_upload(
             )
         except Exception as webhook_err:
             print(f"Failed to send error webhook: {webhook_err}")
-        
+
+        # For user-facing OpenAI errors (auth, quota), don't re-raise —
+        # the webhook already delivered the clean message.
+        # Re-raising would cause Modal to serialize the exception as an
+        # unreadable remote traceback.
+        if isinstance(e, OpenAIUserError):
+            return
+
         raise
 
 
@@ -884,6 +944,7 @@ async def trigger(data: dict) -> dict:
         webhook_secret=data["webhook_secret"],
         audio_only=data.get("audio_only", False),
         job_id=data.get("job_id"),
+        openai_api_key=data.get("openai_api_key"),
     )
     
     return {"status": "processing", "phrase_id": phrase_id}
@@ -917,6 +978,7 @@ async def generate_phrases(data: dict) -> dict:
     theme = data.get("theme")
     num_phrases = data.get("num_phrases", 10)
     existing_deck = data.get("existing_deck")
+    user_openai_key = data.get("openai_api_key")
 
     if not user_id or not language or not theme:
         return {"error": "Missing required fields", "status": "error"}
@@ -953,11 +1015,15 @@ Requirements:
 
 Make phrases diverse and useful. Respond ONLY with valid JSON. No markdown, no code blocks, no extra text."""
 
+    from openai import AuthenticationError, RateLimitError, APIStatusError
+
+    is_user_key = user_openai_key is not None
+
     try:
         # Call GPT
-        api_key = os.environ.get("OPENAI_API_KEY")
+        api_key = user_openai_key or os.environ.get("OPENAI_API_KEY")
         if not api_key:
-            return {"error": "OPENAI_API_KEY not configured", "status": "error"}
+            return {"error": "No OpenAI API key available. Please add your own key in Settings.", "status": "error"}
 
         client = OpenAI(api_key=api_key)
 
@@ -988,6 +1054,13 @@ Make phrases diverse and useful. Respond ONLY with valid JSON. No markdown, no c
             "status": "success",
         }
 
+    except (AuthenticationError, RateLimitError, APIStatusError) as e:
+        msg = _handle_openai_error(e, is_user_key)
+        print(f"OpenAI error generating phrases: {msg}")
+        return {"error": msg, "status": "error"}
+    except OpenAIUserError as e:
+        print(f"OpenAI user error generating phrases: {e}")
+        return {"error": str(e), "status": "error"}
     except Exception as e:
         print(f"Error generating phrases: {e}")
-        return {"error": str(e), "status": "error"}
+        return {"error": str(e)[:300], "status": "error"}

@@ -29,3 +29,13 @@ CREATE INDEX IF NOT EXISTS idx_phrases_status ON phrases(status);
 CREATE INDEX IF NOT EXISTS idx_phrases_created ON phrases(created_at);
 CREATE INDEX IF NOT EXISTS idx_phrases_export ON phrases(status, exclude_from_export);
 CREATE INDEX IF NOT EXISTS idx_phrases_user ON phrases(user_id);
+
+-- User settings (API keys, preferences)
+CREATE TABLE IF NOT EXISTS user_settings (
+  user_id TEXT PRIMARY KEY,
+  openai_api_key_encrypted TEXT,    -- AES-256-GCM ciphertext, base64-encoded
+  openai_api_key_iv TEXT,           -- 12-byte IV, base64-encoded
+  openai_api_key_mask TEXT,         -- Last 4 chars for display: "sk-...aBcD"
+  created_at INTEGER,
+  updated_at INTEGER
+);

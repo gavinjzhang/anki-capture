@@ -13,6 +13,7 @@ import { handleGenerate, handleConfirmGenerated } from './routes/generate';
 import { handleExport, handleExportComplete, handleExportPreview } from './routes/export';
 import { handleModalWebhook } from './routes/webhook';
 import { handleGetFile } from './routes/files';
+import { handleGetSettings, handleUpdateSettings, handleDeleteSettings } from './routes/settings';
 import { handleHealth } from './routes/health';
 import { sweepProcessingTimeouts } from './lib/db';
 import { sweepR2Orphans } from './maintenance/orphans';
@@ -48,6 +49,11 @@ const routes: Route[] = [
   { method: 'GET', pattern: /^\/api\/export$/, handler: handleExport },
   { method: 'GET', pattern: /^\/api\/export\/preview$/, handler: handleExportPreview },
   { method: 'POST', pattern: /^\/api\/export\/complete$/, handler: handleExportComplete },
+
+  // Settings
+  { method: 'GET', pattern: /^\/api\/settings$/, handler: handleGetSettings },
+  { method: 'PUT', pattern: /^\/api\/settings$/, handler: handleUpdateSettings },
+  { method: 'DELETE', pattern: /^\/api\/settings$/, handler: handleDeleteSettings },
 
   // Webhook
   { method: 'POST', pattern: /^\/api\/webhook\/modal$/, handler: handleModalWebhook },

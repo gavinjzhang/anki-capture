@@ -13,6 +13,7 @@ invocation_logs = true
 [vars]
 # MODAL_WEBHOOK_SECRET should be set via `wrangler secret put MODAL_WEBHOOK_SECRET`
 # FILE_URL_SIGNING_SECRET should be set via `wrangler secret put FILE_URL_SIGNING_SECRET`
+# USER_KEY_ENCRYPTION_SECRET should be set via `wrangler secret put USER_KEY_ENCRYPTION_SECRET`
 CLERK_JWT_ISSUER = "https://clerk.ankicapture.com"
 MODAL_ENDPOINT = "https://gavinjzhang--anki-capture-trigger.modal.run"
 MODAL_GENERATE_ENDPOINT = "https://gavinjzhang--anki-capture-generate-phrases.modal.run"

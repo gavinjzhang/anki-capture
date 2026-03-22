@@ -10,6 +10,7 @@ export interface ProcessingJob {
   webhook_url: string;
   job_id: string;
   audio_only?: boolean;         // If true, only regenerate audio (skip breakdown)
+  openai_api_key?: string;      // User's own key (decrypted, never logged)
 }
 
 export async function triggerProcessing(

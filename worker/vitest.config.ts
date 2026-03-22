@@ -12,6 +12,7 @@ export default defineWorkersConfig({
           bindings: {
             MODAL_WEBHOOK_SECRET: "test-webhook-secret",
             FILE_URL_SIGNING_SECRET: "test-signing-secret",
+            USER_KEY_ENCRYPTION_SECRET: "test-encryption-secret-for-user-api-keys",
             CLERK_JWT_ISSUER: "https://test.clerk.accounts.dev",
             ENVIRONMENT: "test",
           },

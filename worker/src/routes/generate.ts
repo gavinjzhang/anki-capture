@@ -3,6 +3,7 @@ import { requireAuth } from '../lib/auth';
 import { isRateLimited } from '../lib/rateLimit';
 import { createPhrase, getPhraseForUser, setCurrentJobForUser } from '../lib/db';
 import { triggerProcessing } from '../lib/modal';
+import { getDecryptedOpenAIKey } from '../lib/settings';
 
 export interface GeneratePhraseRequest {
   language: Language;
@@ -60,6 +61,8 @@ export async function handleGenerate(
       throw new Error('MODAL_GENERATE_ENDPOINT is not configured');
     }
 
+    const userOpenAIKey = await getDecryptedOpenAIKey(env, userId);
+
     const modalResponse = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -69,6 +72,7 @@ export async function handleGenerate(
         theme: theme.trim(),
         num_phrases,
         existing_deck: existing_deck || null,
+        ...(userOpenAIKey ? { openai_api_key: userOpenAIKey } : {}),
       }),
     });
 
@@ -182,6 +186,7 @@ export async function handleConfirmGenerated(
 
     // Trigger processing for each phrase
     const requestUrl = new URL(request.url);
+    const userOpenAIKey = await getDecryptedOpenAIKey(env, userId);
     for (const id of phrase_ids) {
       const phrase = await getPhraseForUser(env, userId, id);
       if (!phrase) continue;
@@ -200,6 +205,7 @@ export async function handleConfirmGenerated(
           language: phrase.detected_language,
           webhook_url: '', // Will be built in triggerProcessing
           job_id: jobId,
+          ...(userOpenAIKey ? { openai_api_key: userOpenAIKey } : {}),
         },
         requestUrl
       );

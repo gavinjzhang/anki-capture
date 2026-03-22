@@ -4,6 +4,7 @@ import { uploadFile, generateFileKey, getExtensionFromContentType } from '../lib
 import { requireAuth } from '../lib/auth';
 import { triggerProcessing, buildFileUrl } from '../lib/modal';
 import { isRateLimited, addRateLimitHeaders } from '../lib/rateLimit';
+import { getDecryptedOpenAIKey } from '../lib/settings';
 
 function generateId(): string {
   return crypto.randomUUID();
@@ -68,6 +69,7 @@ export async function handleFileUpload(
   const requestUrl = new URL(request.url);
   const jobId = crypto.randomUUID();
   await setCurrentJobForUser(env, userId, phraseId, jobId, true);
+  const userOpenAIKey = await getDecryptedOpenAIKey(env, userId);
   console.log('Enqueue processing', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: phraseId, job_id: jobId, source_type: sourceType });
   await triggerProcessing(env, {
     phrase_id: phraseId,
@@ -77,6 +79,7 @@ export async function handleFileUpload(
     language: null,
     webhook_url: '', // Will be set in triggerProcessing
     job_id: jobId,
+    ...(userOpenAIKey ? { openai_api_key: userOpenAIKey } : {}),
   }, requestUrl);
 
   const responseHeaders = new Headers();
@@ -127,6 +130,7 @@ export async function handleTextUpload(
   const requestUrl = new URL(request.url);
   const jobId = crypto.randomUUID();
   await setCurrentJobForUser(env, userId, phraseId, jobId, true);
+  const userOpenAIKey = await getDecryptedOpenAIKey(env, userId);
   console.log('Enqueue processing', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: phraseId, job_id: jobId, source_type: 'text' });
   await triggerProcessing(env, {
     phrase_id: phraseId,
@@ -136,6 +140,7 @@ export async function handleTextUpload(
     language: body.language,
     webhook_url: '',
     job_id: jobId,
+    ...(userOpenAIKey ? { openai_api_key: userOpenAIKey } : {}),
   }, requestUrl);
 
   const responseHeaders = new Headers();

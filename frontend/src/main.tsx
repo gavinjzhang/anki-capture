@@ -8,6 +8,7 @@ import GeneratePage from './pages/Generate'
 import ReviewPage from './pages/Review'
 import LibraryPage from './pages/Library'
 import ExportPage from './pages/Export'
+import SettingsPage from './pages/Settings'
 import ProcessingStatus from './components/ProcessingStatus'
 import RequireAuth from './components/RequireAuth'
 import { ToastProvider } from './components/Toast'
@@ -63,6 +64,7 @@ function App() {
                   { to: '/review', label: 'Review' },
                   { to: '/library', label: 'Library' },
                   { to: '/export', label: 'Export' },
+                  { to: '/settings', label: 'Settings' },
                 ].map(({ to, label }) => (
                   <NavLink
                     key={to}
@@ -142,6 +144,7 @@ function App() {
                 { to: '/review', label: 'Review' },
                 { to: '/library', label: 'Library' },
                 { to: '/export', label: 'Export' },
+                { to: '/settings', label: 'Settings' },
               ].map(({ to, label }) => (
                 <NavLink
                   key={to}
@@ -178,6 +181,7 @@ function App() {
             <Route path="/review" element={<RequireAuth><ReviewPage /></RequireAuth>} />
             <Route path="/library" element={<RequireAuth><LibraryPage /></RequireAuth>} />
             <Route path="/export" element={<RequireAuth><ExportPage /></RequireAuth>} />
+            <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
           </Routes>
         </main>
         <AuthWire />

@@ -12,6 +12,7 @@ import { requireAuth } from '../lib/auth';
 import { setCurrentJobForUser } from '../lib/db';
 import { buildAbsoluteSignedUrl } from '../lib/signing';
 import { isRateLimited, addRateLimitHeaders } from '../lib/rateLimit';
+import { getDecryptedOpenAIKey } from '../lib/settings';
 
 // GET /api/phrases
 export async function handleListPhrases(
@@ -91,22 +92,24 @@ export async function handleUpdatePhrase(
   // If language changed, trigger reprocessing
   if (body.detected_language && body.detected_language !== phrase.detected_language) {
     const requestUrl = new URL(request.url);
-    
+
     await updatePhraseForUser(env, userId, id, { detected_language: body.detected_language });
     const jobId = crypto.randomUUID();
     await setCurrentJobForUser(env, userId, id, jobId, true);
+    const userOpenAIKey = await getDecryptedOpenAIKey(env, userId);
     console.log('Enqueue reprocess', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: id, job_id: jobId, new_language: body.detected_language });
-    
+
     await triggerProcessing(env, {
       phrase_id: id,
       source_type: phrase.source_type,
-      file_url: phrase.original_file_url 
-        ? await buildFileUrl(env, requestUrl, phrase.original_file_url) 
+      file_url: phrase.original_file_url
+        ? await buildFileUrl(env, requestUrl, phrase.original_file_url)
         : null,
       source_text: phrase.source_text,
       language: body.detected_language,
       webhook_url: '',
       job_id: jobId,
+      ...(userOpenAIKey ? { openai_api_key: userOpenAIKey } : {}),
     }, requestUrl);
     
     return Response.json({ 
@@ -215,10 +218,11 @@ export async function handleRegenerateAudio(
   
   // This will trigger just TTS regeneration in Modal
   const requestUrl = new URL(request.url);
-  
+
   // We'll handle this as a special "regenerate_audio" job type
   const jobId = crypto.randomUUID();
   await setCurrentJobForUser(env, userId, id, jobId, false);
+  const userOpenAIKey = await getDecryptedOpenAIKey(env, userId);
   console.log('Enqueue regen-audio', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: id, job_id: jobId });
   await triggerProcessing(env, {
     phrase_id: id,
@@ -229,6 +233,7 @@ export async function handleRegenerateAudio(
     webhook_url: '',
     job_id: jobId,
     audio_only: true,  // Only regenerate audio, don't overwrite other fields
+    ...(userOpenAIKey ? { openai_api_key: userOpenAIKey } : {}),
   }, requestUrl);
 
   const responseHeaders = new Headers();
@@ -262,6 +267,7 @@ export async function handleRetryPhrase(
   const requestUrl = new URL(request.url);
   const jobId = crypto.randomUUID();
   await setCurrentJobForUser(env, userId, id, jobId, true);
+  const userOpenAIKey = await getDecryptedOpenAIKey(env, userId);
   console.log('Enqueue retry', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: id, job_id: jobId });
   await triggerProcessing(env, {
     phrase_id: id,
@@ -271,6 +277,7 @@ export async function handleRetryPhrase(
     language: phrase.detected_language,
     webhook_url: '',
     job_id: jobId,
+    ...(userOpenAIKey ? { openai_api_key: userOpenAIKey } : {}),
   }, requestUrl);
 
   const responseHeaders = new Headers();
