@@ -55,7 +55,7 @@ ENVIRONMENT = "production"
 CLERK_JWT_ISSUER = "https://clerk.ankicapture.com"
 MODAL_ENDPOINT = "https://gavinjzhang--anki-capture-trigger.modal.run"
 MODAL_GENERATE_ENDPOINT = "https://gavinjzhang--anki-capture-generate-phrases.modal.run"
-ALLOWED_ORIGINS = "https://anki-capture.pages.dev"  # Replace with your actual frontend URL
+ALLOWED_ORIGINS = "https://ankicapture.com,https://anki-capture.pages.dev"
 
 [[env.production.d1_databases]]
 binding = "DB"
