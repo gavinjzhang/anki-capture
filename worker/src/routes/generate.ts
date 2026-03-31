@@ -3,7 +3,8 @@ import { requireAuth } from '../lib/auth';
 import { isRateLimited } from '../lib/rateLimit';
 import { createPhrase, getPhraseForUser, setCurrentJobForUser } from '../lib/db';
 import { triggerProcessing } from '../lib/modal';
-import { getDecryptedOpenAIKey } from '../lib/settings';
+import { getDecryptedLLMKey } from '../lib/settings';
+import { checkAndIncrementDailyUsage } from '../lib/dailyUsage';
 
 export interface GeneratePhraseRequest {
   language: Language;
@@ -61,7 +62,16 @@ export async function handleGenerate(
       throw new Error('MODAL_GENERATE_ENDPOINT is not configured');
     }
 
-    const userOpenAIKey = await getDecryptedOpenAIKey(env, userId);
+    const userLLM = await getDecryptedLLMKey(env, userId);
+    if (!userLLM) {
+      const usage = await checkAndIncrementDailyUsage(env, userId);
+      if (!usage.allowed) {
+        return Response.json(
+          { error: `Daily limit reached (${usage.limit} free analyses/day). Add your own API key in Settings to continue.` },
+          { status: 429 },
+        );
+      }
+    }
 
     const modalResponse = await fetch(endpoint, {
       method: 'POST',
@@ -72,7 +82,7 @@ export async function handleGenerate(
         theme: theme.trim(),
         num_phrases,
         existing_deck: existing_deck || null,
-        ...(userOpenAIKey ? { openai_api_key: userOpenAIKey } : {}),
+        ...(userLLM ? { llm_provider: userLLM.provider, llm_model: userLLM.model, llm_api_key: userLLM.key } : {}),
       }),
     });
 
@@ -186,7 +196,16 @@ export async function handleConfirmGenerated(
 
     // Trigger processing for each phrase
     const requestUrl = new URL(request.url);
-    const userOpenAIKey = await getDecryptedOpenAIKey(env, userId);
+    const userLLM = await getDecryptedLLMKey(env, userId);
+    if (!userLLM) {
+      const usage = await checkAndIncrementDailyUsage(env, userId, phrase_ids.length);
+      if (!usage.allowed) {
+        return Response.json(
+          { error: `Daily limit reached (${usage.limit} free analyses/day). Add your own API key in Settings to continue.` },
+          { status: 429 },
+        );
+      }
+    }
     for (const id of phrase_ids) {
       const phrase = await getPhraseForUser(env, userId, id);
       if (!phrase) continue;
@@ -205,7 +224,7 @@ export async function handleConfirmGenerated(
           language: phrase.detected_language,
           webhook_url: '', // Will be built in triggerProcessing
           job_id: jobId,
-          ...(userOpenAIKey ? { openai_api_key: userOpenAIKey } : {}),
+          ...(userLLM ? { llm_provider: userLLM.provider, llm_model: userLLM.model, llm_api_key: userLLM.key } : {}),
         },
         requestUrl
       );

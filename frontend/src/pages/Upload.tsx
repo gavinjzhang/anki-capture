@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { uploadFile, uploadText, AuthError } from '../lib/api'
+import { uploadFile, uploadText, getSettings, AuthError } from '../lib/api'
 
 type InputMode = 'image' | 'audio' | 'text'
 type AudioInputMode = 'upload' | 'record'
@@ -13,6 +13,8 @@ export default function UploadPage() {
   const [uploadDone, setUploadDone] = useState(0)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [recentUploads, setRecentUploads] = useState<string[]>([])
+  const [dailyUsage, setDailyUsage] = useState<number | null>(null)
+  const [dailyLimit, setDailyLimit] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dropRef = useRef<HTMLDivElement>(null)
 
@@ -30,6 +32,20 @@ export default function UploadPage() {
   const timerIntervalRef = useRef<number | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const audioPreviewRef = useRef<HTMLAudioElement>(null)
+
+  useEffect(() => {
+    getSettings().then(s => {
+      setDailyUsage(s.daily_llm_usage)
+      setDailyLimit(s.daily_llm_limit)
+    }).catch(() => {})
+  }, [])
+
+  const refreshUsage = () => {
+    getSettings().then(s => {
+      setDailyUsage(s.daily_llm_usage)
+      setDailyLimit(s.daily_llm_limit)
+    }).catch(() => {})
+  }
 
   const resetProgress = () => {
     setUploadTotal(0)
@@ -68,6 +84,7 @@ export default function UploadPage() {
     setMessage({ type: 'success', text: 'Batch started! Check Review page shortly.' })
     setUploading(false)
     resetProgress()
+    refreshUsage()
     if (fileInputRef.current) fileInputRef.current.value = ''
   }, [])
 
@@ -88,6 +105,7 @@ export default function UploadPage() {
       setRecentUploads(prev => [result.id, ...prev.slice(0, 4)])
       setMessage({ type: 'success', text: 'Processing started! Check Review page shortly.' })
       setText('')
+      refreshUsage()
     } catch (err) {
       if (err instanceof AuthError) {
         setMessage({ type: 'error', text: 'Session expired — please sign in again.' })
@@ -405,7 +423,7 @@ export default function UploadPage() {
               <label className="block text-sm font-medium text-zinc-300 mb-2">
                 Language
               </label>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {[
                   { id: 'ru' as const, label: 'Russian', flag: '🇷🇺' },
                   { id: 'ar' as const, label: 'Arabic', flag: '🇸🇦' },
@@ -444,13 +462,22 @@ export default function UploadPage() {
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={!text.trim() || uploading}
-              className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:text-zinc-400 text-white font-medium rounded-lg transition-colors"
-            >
-              {uploading ? 'Processing...' : 'Submit'}
-            </button>
+            <div className="flex items-center gap-4">
+              <button
+                type="submit"
+                disabled={!text.trim() || uploading || (dailyLimit !== null && dailyUsage !== null && dailyUsage >= dailyLimit)}
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:text-zinc-400 text-white font-medium rounded-lg transition-colors"
+              >
+                {uploading ? 'Processing...' : 'Submit'}
+              </button>
+              {dailyLimit !== null && dailyUsage !== null && (
+                <span className={`text-xs ${dailyUsage >= dailyLimit ? 'text-red-400' : dailyUsage / dailyLimit > 0.7 ? 'text-amber-400' : 'text-zinc-500'}`}>
+                  {dailyUsage >= dailyLimit
+                    ? 'Daily limit reached — add your API key in Settings'
+                    : `${dailyLimit - dailyUsage} free ${dailyLimit - dailyUsage === 1 ? 'analysis' : 'analyses'} left today`}
+                </span>
+              )}
+            </div>
           </form>
         ) : mode === 'audio' && audioInputMode === 'record' ? (
           // Audio recording interface
@@ -546,7 +573,20 @@ export default function UploadPage() {
           </div>
         ) : (
           // File upload interface (image or audio upload mode)
-          <label className={`block ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+          <>
+          {dailyLimit !== null && dailyUsage !== null && (
+            <div className={`mb-4 flex items-center justify-between text-xs px-3 py-2 rounded-lg ${
+              dailyUsage >= dailyLimit ? 'bg-red-500/10 text-red-400' : dailyUsage / dailyLimit > 0.7 ? 'bg-amber-500/10 text-amber-400' : 'bg-zinc-800 text-zinc-500'
+            }`}>
+              <span>
+                {dailyUsage >= dailyLimit
+                  ? 'Daily limit reached — add your API key in Settings to continue'
+                  : `${dailyLimit - dailyUsage} free ${dailyLimit - dailyUsage === 1 ? 'analysis' : 'analyses'} left today`}
+              </span>
+              <span className="font-mono">{dailyUsage}/{dailyLimit}</span>
+            </div>
+          )}
+          <label className={`block ${uploading || (dailyLimit !== null && dailyUsage !== null && dailyUsage >= dailyLimit) ? 'opacity-50 pointer-events-none' : ''}`}>
             <input
               ref={fileInputRef}
               type="file"
@@ -574,6 +614,7 @@ export default function UploadPage() {
               </p>
             </div>
           </label>
+          </>
         )}
       </div>
 

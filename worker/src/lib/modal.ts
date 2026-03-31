@@ -10,7 +10,9 @@ export interface ProcessingJob {
   webhook_url: string;
   job_id: string;
   audio_only?: boolean;         // If true, only regenerate audio (skip breakdown)
-  openai_api_key?: string;      // User's own key (decrypted, never logged)
+  llm_provider?: string;        // User's LLM provider (decrypted, never logged)
+  llm_model?: string;           // User's LLM model
+  llm_api_key?: string;         // User's LLM API key (decrypted, never logged)
 }
 
 export async function triggerProcessing(

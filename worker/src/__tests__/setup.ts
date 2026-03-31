@@ -43,6 +43,11 @@ beforeAll(async () => {
       openai_api_key_encrypted TEXT,
       openai_api_key_iv TEXT,
       openai_api_key_mask TEXT,
+      llm_provider TEXT,
+      llm_model TEXT,
+      llm_api_key_encrypted TEXT,
+      llm_api_key_iv TEXT,
+      llm_api_key_mask TEXT,
       created_at INTEGER,
       updated_at INTEGER
     )
@@ -53,6 +58,15 @@ beforeAll(async () => {
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_phrases_created ON phrases(created_at)`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_phrases_export ON phrases(status, exclude_from_export)`).run();
   await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_phrases_user ON phrases(user_id)`).run();
+
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS daily_llm_usage (
+      user_id TEXT NOT NULL,
+      date    TEXT NOT NULL,
+      count   INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, date)
+    )
+  `).run();
 });
 
 // Clear database between tests

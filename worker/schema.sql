@@ -30,12 +30,25 @@ CREATE INDEX IF NOT EXISTS idx_phrases_created ON phrases(created_at);
 CREATE INDEX IF NOT EXISTS idx_phrases_export ON phrases(status, exclude_from_export);
 CREATE INDEX IF NOT EXISTS idx_phrases_user ON phrases(user_id);
 
+-- Daily LLM usage tracking (for free-tier users without a BYO key)
+CREATE TABLE IF NOT EXISTS daily_llm_usage (
+  user_id TEXT NOT NULL,
+  date    TEXT NOT NULL,   -- UTC date: 'YYYY-MM-DD'
+  count   INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, date)
+);
+
 -- User settings (API keys, preferences)
 CREATE TABLE IF NOT EXISTS user_settings (
   user_id TEXT PRIMARY KEY,
-  openai_api_key_encrypted TEXT,    -- AES-256-GCM ciphertext, base64-encoded
-  openai_api_key_iv TEXT,           -- 12-byte IV, base64-encoded
-  openai_api_key_mask TEXT,         -- Last 4 chars for display: "sk-...aBcD"
+  openai_api_key_encrypted TEXT,    -- legacy: kept for migration only
+  openai_api_key_iv TEXT,           -- legacy: kept for migration only
+  openai_api_key_mask TEXT,         -- legacy: kept for migration only
+  llm_provider TEXT,                -- 'openai' | 'anthropic' | 'gemini' | 'deepseek'
+  llm_model TEXT,                   -- e.g. 'gpt-4o', 'claude-sonnet-4-6'
+  llm_api_key_encrypted TEXT,       -- AES-256-GCM ciphertext, base64-encoded
+  llm_api_key_iv TEXT,              -- 12-byte IV, base64-encoded
+  llm_api_key_mask TEXT,            -- Last 4 chars for display: "sk-...aBcD"
   created_at INTEGER,
   updated_at INTEGER
 );

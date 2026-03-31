@@ -13,6 +13,7 @@ export interface Env {
   FILE_URL_SIGNING_SECRET?: string; // HMAC secret for signed /api/files URLs
   USER_KEY_ENCRYPTION_SECRET?: string; // AES-256-GCM key for encrypting user API keys
   ALLOWED_ORIGINS?: string; // Comma-separated list of allowed CORS origins
+  FREE_DAILY_LLM_LIMIT?: string; // Max LLM calls/day for users without a BYO key (default: 20)
 }
 
 export type SourceType = 'image' | 'audio' | 'text';

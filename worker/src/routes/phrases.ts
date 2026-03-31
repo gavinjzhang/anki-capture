@@ -12,7 +12,8 @@ import { requireAuth } from '../lib/auth';
 import { setCurrentJobForUser } from '../lib/db';
 import { buildAbsoluteSignedUrl } from '../lib/signing';
 import { isRateLimited, addRateLimitHeaders } from '../lib/rateLimit';
-import { getDecryptedOpenAIKey } from '../lib/settings';
+import { getDecryptedLLMKey } from '../lib/settings';
+import { checkAndIncrementDailyUsage } from '../lib/dailyUsage';
 
 // GET /api/phrases
 export async function handleListPhrases(
@@ -96,7 +97,16 @@ export async function handleUpdatePhrase(
     await updatePhraseForUser(env, userId, id, { detected_language: body.detected_language });
     const jobId = crypto.randomUUID();
     await setCurrentJobForUser(env, userId, id, jobId, true);
-    const userOpenAIKey = await getDecryptedOpenAIKey(env, userId);
+    const userLLM = await getDecryptedLLMKey(env, userId);
+    if (!userLLM) {
+      const usage = await checkAndIncrementDailyUsage(env, userId);
+      if (!usage.allowed) {
+        return Response.json(
+          { error: `Daily limit reached (${usage.limit} free analyses/day). Add your own API key in Settings to continue.` },
+          { status: 429 },
+        );
+      }
+    }
     console.log('Enqueue reprocess', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: id, job_id: jobId, new_language: body.detected_language });
 
     await triggerProcessing(env, {
@@ -109,7 +119,7 @@ export async function handleUpdatePhrase(
       language: body.detected_language,
       webhook_url: '',
       job_id: jobId,
-      ...(userOpenAIKey ? { openai_api_key: userOpenAIKey } : {}),
+      ...(userLLM ? { llm_provider: userLLM.provider, llm_model: userLLM.model, llm_api_key: userLLM.key } : {}),
     }, requestUrl);
     
     return Response.json({ 
@@ -222,7 +232,7 @@ export async function handleRegenerateAudio(
   // We'll handle this as a special "regenerate_audio" job type
   const jobId = crypto.randomUUID();
   await setCurrentJobForUser(env, userId, id, jobId, false);
-  const userOpenAIKey = await getDecryptedOpenAIKey(env, userId);
+  const userLLM = await getDecryptedLLMKey(env, userId);
   console.log('Enqueue regen-audio', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: id, job_id: jobId });
   await triggerProcessing(env, {
     phrase_id: id,
@@ -233,7 +243,7 @@ export async function handleRegenerateAudio(
     webhook_url: '',
     job_id: jobId,
     audio_only: true,  // Only regenerate audio, don't overwrite other fields
-    ...(userOpenAIKey ? { openai_api_key: userOpenAIKey } : {}),
+    ...(userLLM ? { llm_provider: userLLM.provider, llm_model: userLLM.model, llm_api_key: userLLM.key } : {}),
   }, requestUrl);
 
   const responseHeaders = new Headers();
@@ -267,7 +277,16 @@ export async function handleRetryPhrase(
   const requestUrl = new URL(request.url);
   const jobId = crypto.randomUUID();
   await setCurrentJobForUser(env, userId, id, jobId, true);
-  const userOpenAIKey = await getDecryptedOpenAIKey(env, userId);
+  const userLLM = await getDecryptedLLMKey(env, userId);
+  if (!userLLM) {
+    const usage = await checkAndIncrementDailyUsage(env, userId);
+    if (!usage.allowed) {
+      return Response.json(
+        { error: `Daily limit reached (${usage.limit} free analyses/day). Add your own API key in Settings to continue.` },
+        { status: 429 },
+      );
+    }
+  }
   console.log('Enqueue retry', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: id, job_id: jobId });
   await triggerProcessing(env, {
     phrase_id: id,
@@ -277,7 +296,7 @@ export async function handleRetryPhrase(
     language: phrase.detected_language,
     webhook_url: '',
     job_id: jobId,
-    ...(userOpenAIKey ? { openai_api_key: userOpenAIKey } : {}),
+    ...(userLLM ? { llm_provider: userLLM.provider, llm_model: userLLM.model, llm_api_key: userLLM.key } : {}),
   }, requestUrl);
 
   const responseHeaders = new Headers();

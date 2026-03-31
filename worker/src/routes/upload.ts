@@ -4,7 +4,8 @@ import { uploadFile, generateFileKey, getExtensionFromContentType } from '../lib
 import { requireAuth } from '../lib/auth';
 import { triggerProcessing, buildFileUrl } from '../lib/modal';
 import { isRateLimited, addRateLimitHeaders } from '../lib/rateLimit';
-import { getDecryptedOpenAIKey } from '../lib/settings';
+import { getDecryptedLLMKey } from '../lib/settings';
+import { checkAndIncrementDailyUsage } from '../lib/dailyUsage';
 
 function generateId(): string {
   return crypto.randomUUID();
@@ -69,7 +70,16 @@ export async function handleFileUpload(
   const requestUrl = new URL(request.url);
   const jobId = crypto.randomUUID();
   await setCurrentJobForUser(env, userId, phraseId, jobId, true);
-  const userOpenAIKey = await getDecryptedOpenAIKey(env, userId);
+  const userLLM = await getDecryptedLLMKey(env, userId);
+  if (!userLLM) {
+    const usage = await checkAndIncrementDailyUsage(env, userId);
+    if (!usage.allowed) {
+      return Response.json(
+        { error: `Daily limit reached (${usage.limit} free analyses/day). Add your own API key in Settings to continue.` },
+        { status: 429 },
+      );
+    }
+  }
   console.log('Enqueue processing', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: phraseId, job_id: jobId, source_type: sourceType });
   await triggerProcessing(env, {
     phrase_id: phraseId,
@@ -79,7 +89,7 @@ export async function handleFileUpload(
     language: null,
     webhook_url: '', // Will be set in triggerProcessing
     job_id: jobId,
-    ...(userOpenAIKey ? { openai_api_key: userOpenAIKey } : {}),
+    ...(userLLM ? { llm_provider: userLLM.provider, llm_model: userLLM.model, llm_api_key: userLLM.key } : {}),
   }, requestUrl);
 
   const responseHeaders = new Headers();
@@ -130,7 +140,16 @@ export async function handleTextUpload(
   const requestUrl = new URL(request.url);
   const jobId = crypto.randomUUID();
   await setCurrentJobForUser(env, userId, phraseId, jobId, true);
-  const userOpenAIKey = await getDecryptedOpenAIKey(env, userId);
+  const userLLM = await getDecryptedLLMKey(env, userId);
+  if (!userLLM) {
+    const usage = await checkAndIncrementDailyUsage(env, userId);
+    if (!usage.allowed) {
+      return Response.json(
+        { error: `Daily limit reached (${usage.limit} free analyses/day). Add your own API key in Settings to continue.` },
+        { status: 429 },
+      );
+    }
+  }
   console.log('Enqueue processing', { request_id: request.headers.get('x-request-id') || undefined, phrase_id: phraseId, job_id: jobId, source_type: 'text' });
   await triggerProcessing(env, {
     phrase_id: phraseId,
@@ -140,7 +159,7 @@ export async function handleTextUpload(
     language: body.language,
     webhook_url: '',
     job_id: jobId,
-    ...(userOpenAIKey ? { openai_api_key: userOpenAIKey } : {}),
+    ...(userLLM ? { llm_provider: userLLM.provider, llm_model: userLLM.model, llm_api_key: userLLM.key } : {}),
   }, requestUrl);
 
   const responseHeaders = new Headers();

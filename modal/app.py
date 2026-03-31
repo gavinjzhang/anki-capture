@@ -35,6 +35,7 @@ processing_image = modal.Image.debian_slim(python_version="3.11").pip_install(
     "google-cloud-vision",
     "google-cloud-texttospeech",
     "openai",
+    "litellm",
     "elevenlabs",
     # Required for @modal.web_endpoint functions
     "fastapi",
@@ -534,38 +535,59 @@ class OpenAIUserError(Exception):
     pass
 
 
-def _handle_openai_error(e: Exception, is_user_key: bool) -> str:
-    """Convert OpenAI SDK exceptions into clear, actionable error messages."""
-    from openai import AuthenticationError, RateLimitError, APIStatusError, APIConnectionError, APITimeoutError
+PROVIDER_NAMES = {
+    "openai": "OpenAI",
+    "anthropic": "Anthropic",
+    "gemini": "Google Gemini",
+    "deepseek": "DeepSeek",
+}
 
-    key_hint = " Check your API key in Settings." if is_user_key else ""
+PROVIDER_MODEL_PREFIX = {
+    "openai": "openai/",
+    "anthropic": "anthropic/",
+    "gemini": "gemini/",
+    "deepseek": "deepseek/",
+}
 
-    if isinstance(e, AuthenticationError):
+def _get_litellm_model(provider: str, model: str) -> str:
+    """Build the LiteLLM model string with provider prefix."""
+    prefix = PROVIDER_MODEL_PREFIX.get(provider, "openai/")
+    return f"{prefix}{model}"
+
+
+def _handle_llm_error(e: Exception, is_user_key: bool, provider: str = "openai") -> str:
+    """Convert LiteLLM exceptions into clear, actionable error messages."""
+    import litellm
+
+    provider_name = PROVIDER_NAMES.get(provider, provider)
+    key_hint = f" Check your {provider_name} API key in Settings." if is_user_key else ""
+
+    if isinstance(e, litellm.AuthenticationError):
         if is_user_key:
-            return "Your OpenAI API key is invalid or has been revoked. Please update it in Settings."
-        return "OpenAI authentication failed. Please contact support."
+            return f"Your {provider_name} API key is invalid or has been revoked. Please update it in Settings."
+        return f"{provider_name} authentication failed. Please contact support."
 
-    if isinstance(e, RateLimitError):
-        err_body = getattr(e, 'body', {}) or {}
-        err_detail = err_body.get('error', {}) if isinstance(err_body, dict) else {}
-        code = err_detail.get('code', '') if isinstance(err_detail, dict) else ''
-
-        if code == 'insufficient_quota':
+    if isinstance(e, litellm.RateLimitError):
+        err_body = getattr(e, 'response', None)
+        # Check for quota exhaustion
+        err_str = str(e).lower()
+        if 'insufficient_quota' in err_str or 'quota' in err_str:
             if is_user_key:
-                return "Your OpenAI API key has exceeded its quota. Please check your billing at platform.openai.com."
-            return "OpenAI quota exceeded. Please try again later or add your own API key in Settings."
-        return f"OpenAI rate limit reached. Please wait a moment and retry.{key_hint}"
+                return f"Your {provider_name} API key has exceeded its quota. Please check your billing."
+            return f"{provider_name} quota exceeded. Please try again later or add your own API key in Settings."
+        return f"{provider_name} rate limit reached. Please wait a moment and retry.{key_hint}"
 
-    if isinstance(e, APITimeoutError):
-        return "OpenAI request timed out. Please retry."
+    if isinstance(e, litellm.Timeout):
+        return f"{provider_name} request timed out. Please retry."
 
-    if isinstance(e, APIConnectionError):
-        return "Could not connect to OpenAI. Please retry."
+    if isinstance(e, litellm.APIConnectionError):
+        return f"Could not connect to {provider_name}. Please retry."
 
-    if isinstance(e, APIStatusError):
-        return f"OpenAI API error ({e.status_code}): {e.message[:200]}{key_hint}"
+    if isinstance(e, litellm.APIError):
+        status = getattr(e, 'status_code', '')
+        return f"{provider_name} API error ({status}): {str(e)[:200]}{key_hint}"
 
-    return f"OpenAI error: {str(e)[:200]}{key_hint}"
+    return f"{provider_name} error: {str(e)[:200]}{key_hint}"
 
 
 @app.function(
@@ -577,17 +599,21 @@ def _handle_openai_error(e: Exception, is_user_key: bool) -> str:
 def generate_breakdown(
     source_text: str,
     language: str,
-    openai_api_key: Optional[str] = None,
+    llm_provider: Optional[str] = None,
+    llm_model: Optional[str] = None,
+    llm_api_key: Optional[str] = None,
 ) -> dict:
     """Generate translation, transliteration, and grammar/vocab breakdown."""
-    from openai import OpenAI
+    import litellm
 
-    is_user_key = openai_api_key is not None
-    api_key = openai_api_key or os.environ.get("OPENAI_API_KEY")
+    is_user_key = llm_api_key is not None
+    provider = llm_provider or "openai"
+    model = llm_model or "gpt-4o"
+    api_key = llm_api_key or os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        raise Exception("No OpenAI API key available. Please add your own key in Settings.")
+        raise Exception("No LLM API key available. Please add your own key in Settings.")
 
-    client = OpenAI(api_key=api_key)
+    litellm_model = _get_litellm_model(provider, model)
 
     # Get language config from registry
     config = get_language_config(language)
@@ -617,15 +643,14 @@ Be thorough but concise. This is for an intermediate language learner who wants 
 
 Respond ONLY with valid JSON. No markdown, no code blocks, no extra text."""
 
-    from openai import AuthenticationError, RateLimitError, APIStatusError
-
     for attempt in range(3):
         try:
-            response = client.chat.completions.create(
-                model="gpt-4o",
+            response = litellm.completion(
+                model=litellm_model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 response_format={"type": "json_object"},
+                api_key=api_key,
             )
 
             result = json.loads(response.choices[0].message.content)
@@ -636,12 +661,14 @@ Respond ONLY with valid JSON. No markdown, no code blocks, no extra text."""
 
             return result
 
-        except (AuthenticationError, RateLimitError, APIStatusError) as e:
+        except (litellm.AuthenticationError, litellm.RateLimitError, litellm.APIError) as e:
             # Don't retry auth/billing errors — they won't self-resolve
-            raise OpenAIUserError(_handle_openai_error(e, is_user_key))
+            raise OpenAIUserError(_handle_llm_error(e, is_user_key, provider))
         except json.JSONDecodeError as e:
             if attempt == 2:
                 raise Exception(f"Failed to parse LLM response as JSON: {e}")
+        except OpenAIUserError:
+            raise
         except Exception as e:
             if attempt == 2:
                 raise
@@ -773,7 +800,9 @@ async def process_upload(
     webhook_secret: str,
     audio_only: bool = False,
     job_id: Optional[str] = None,
-    openai_api_key: Optional[str] = None,
+    llm_provider: Optional[str] = None,
+    llm_model: Optional[str] = None,
+    llm_api_key: Optional[str] = None,
 ) -> None:
     """Main processing pipeline - orchestrates all steps.
 
@@ -837,7 +866,7 @@ async def process_upload(
         breakdown = None
         if not audio_only:
             print(f"Generating breakdown for {detected_language}")
-            breakdown = generate_breakdown.remote(extracted_text, detected_language, openai_api_key)
+            breakdown = generate_breakdown.remote(extracted_text, detected_language, llm_provider, llm_model, llm_api_key)
 
         # Progress: generating audio
         send_progress("generating_audio")
@@ -944,7 +973,9 @@ async def trigger(data: dict) -> dict:
         webhook_secret=data["webhook_secret"],
         audio_only=data.get("audio_only", False),
         job_id=data.get("job_id"),
-        openai_api_key=data.get("openai_api_key"),
+        llm_provider=data.get("llm_provider"),
+        llm_model=data.get("llm_model"),
+        llm_api_key=data.get("llm_api_key"),
     )
     
     return {"status": "processing", "phrase_id": phrase_id}
@@ -971,14 +1002,14 @@ async def generate_phrases(data: dict) -> dict:
     Returns:
         List of generated phrases with translations
     """
-    from openai import OpenAI
-
     user_id = data.get("user_id")
     language = data.get("language")
     theme = data.get("theme")
     num_phrases = data.get("num_phrases", 10)
     existing_deck = data.get("existing_deck")
-    user_openai_key = data.get("openai_api_key")
+    llm_provider = data.get("llm_provider")
+    llm_model = data.get("llm_model")
+    llm_api_key = data.get("llm_api_key")
 
     if not user_id or not language or not theme:
         return {"error": "Missing required fields", "status": "error"}
@@ -1015,23 +1046,25 @@ Requirements:
 
 Make phrases diverse and useful. Respond ONLY with valid JSON. No markdown, no code blocks, no extra text."""
 
-    from openai import AuthenticationError, RateLimitError, APIStatusError
+    import litellm
 
-    is_user_key = user_openai_key is not None
+    provider = llm_provider or "openai"
+    model = llm_model or "gpt-4o"
+    is_user_key = llm_api_key is not None
+    api_key = llm_api_key or os.environ.get("OPENAI_API_KEY")
+
+    if not api_key:
+        return {"error": "No LLM API key available. Please add your own key in Settings.", "status": "error"}
+
+    litellm_model = _get_litellm_model(provider, model)
 
     try:
-        # Call GPT
-        api_key = user_openai_key or os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            return {"error": "No OpenAI API key available. Please add your own key in Settings.", "status": "error"}
-
-        client = OpenAI(api_key=api_key)
-
-        response = client.chat.completions.create(
-            model="gpt-4o",
+        response = litellm.completion(
+            model=litellm_model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,  # Higher temperature for variety
             response_format={"type": "json_object"},
+            api_key=api_key,
         )
 
         result = json.loads(response.choices[0].message.content)
@@ -1054,12 +1087,12 @@ Make phrases diverse and useful. Respond ONLY with valid JSON. No markdown, no c
             "status": "success",
         }
 
-    except (AuthenticationError, RateLimitError, APIStatusError) as e:
-        msg = _handle_openai_error(e, is_user_key)
-        print(f"OpenAI error generating phrases: {msg}")
+    except (litellm.AuthenticationError, litellm.RateLimitError, litellm.APIError) as e:
+        msg = _handle_llm_error(e, is_user_key, provider)
+        print(f"LLM error generating phrases: {msg}")
         return {"error": msg, "status": "error"}
     except OpenAIUserError as e:
-        print(f"OpenAI user error generating phrases: {e}")
+        print(f"LLM user error generating phrases: {e}")
         return {"error": str(e), "status": "error"}
     except Exception as e:
         print(f"Error generating phrases: {e}")
