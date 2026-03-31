@@ -1,27 +1,45 @@
 import { test, expect } from "@playwright/test";
-import { setupClerkTestingToken } from "@clerk/testing/playwright";
 
-/**
- * Smoke test: Critical user flow
- *
- * This test validates the happy path:
- * 1. Upload text phrase
- * 2. Wait for processing (simulated success)
- * 3. Review and verify fields
- * 4. Approve phrase
- * 5. Export to ZIP
- */
+// Mock API responses so tests don't depend on a live worker with real auth.
+// The worker has its own unit test suite; these are UI smoke tests only.
+async function mockApi(page: Parameters<typeof test>[1] extends { page: infer P } ? P : never) {
+  await page.route("/api/settings", (route) =>
+    route.fulfill({
+      json: {
+        llm_provider: null,
+        llm_model: null,
+        llm_api_key_mask: null,
+        daily_llm_usage: 0,
+        daily_llm_limit: 10,
+      },
+    }),
+  );
+
+  await page.route("/api/phrases*", (route) =>
+    route.fulfill({ json: { phrases: [], total: 0 } }),
+  );
+
+  await page.route("/api/upload/text", (route) =>
+    route.fulfill({
+      status: 202,
+      json: { id: "test-phrase-id", status: "processing" },
+    }),
+  );
+
+  await page.route("/api/upload/sign*", (route) =>
+    route.fulfill({
+      json: { upload_url: "https://example.com/upload", phrase_id: "test-id" },
+    }),
+  );
+}
 
 test.describe("Critical User Flow", () => {
-  // Setup Clerk authentication before each test
   test.beforeEach(async ({ page }) => {
-    await setupClerkTestingToken({ page });
+    await mockApi(page);
   });
-  test("text upload → review → approve → export", async ({ page }) => {
-    // Navigate to app
-    await page.goto("/");
 
-    // Wait for React to hydrate
+  test("text upload → review → approve → export", async ({ page }) => {
+    await page.goto("/");
     await page.waitForLoadState("networkidle");
 
     // Should show Capture page by default
@@ -30,59 +48,39 @@ test.describe("Critical User Flow", () => {
     // Select Text input mode
     await page.click('button:has-text("Text")');
 
-    // Select Russian language (button-based picker)
+    // Select Russian language
     await page.click('button:has-text("Russian")');
 
     // Enter test phrase
-    const testPhrase = "Привет, как дела?";
-    await page.fill('textarea[placeholder*="Type or paste"]', testPhrase);
+    await page.fill('textarea[placeholder*="Type or paste"]', "Привет, как дела?");
 
-    // Submit
+    // Submit (mocked → 202)
     await page.click('button:has-text("Submit")');
 
-    // Should show success message
+    // Should show success/processing message
     await expect(page.locator("text=/Processing started|Check Review/i")).toBeVisible({
       timeout: 10000,
     });
 
     // Navigate to Review page
     await page.click('a:has-text("Review")');
-
-    // Wait for phrase to appear (in real app, would wait for Modal processing)
-    // For this smoke test, we're just checking the UI works
     await expect(page.locator("h1")).toContainText("Review");
-
-    // Should show count of pending phrases (be specific to avoid strict mode)
     await expect(page.locator("text=/\\d+ phrases? pending review/i")).toBeVisible();
-
-    // Click Refresh to get latest
-    await page.click('button:has-text("Refresh")');
-
-    // Verify the page is functional (even if no phrases loaded yet)
-    await expect(page.locator("h1")).toContainText("Review");
 
     // Navigate to Library
     await page.click('a:has-text("Library")');
     await expect(page.locator("h1")).toContainText("Library");
-
-    // Should have filter buttons
     await expect(page.locator('button:has-text("all")')).toBeVisible();
-    await expect(page.locator('button:has-text("processing")')).toBeVisible();
-    await expect(page.locator('button:has-text("pending review")')).toBeVisible();
-    await expect(page.locator('button:has-text("approved")')).toBeVisible();
 
     // Navigate to Export
     await page.click('a:has-text("Export")');
     await expect(page.locator("h1")).toContainText("Export");
-
-    // Should show export instructions
     await expect(page.locator("text=/Import Instructions/i")).toBeVisible();
   });
 
   test("navigation between pages works", async ({ page }) => {
     await page.goto("/");
 
-    // Test all navigation links
     const pages = [
       { link: "Upload", heading: "Capture" },
       { link: "Review", heading: "Review" },
@@ -101,11 +99,9 @@ test.describe("Critical User Flow", () => {
 
     // Click Text mode
     await page.click('button:has-text("Text")');
-
-    // Enter text in the textarea
     await page.fill('textarea[placeholder*="Type or paste"]', "Test");
 
-    // Should have language buttons for all supported languages
+    // Should have language buttons
     await expect(page.locator('button:has-text("Russian")')).toBeVisible();
     await expect(page.locator('button:has-text("Arabic")')).toBeVisible();
     await expect(page.locator('button:has-text("Chinese")')).toBeVisible();
@@ -118,20 +114,14 @@ test.describe("Critical User Flow", () => {
   test("review page shows empty state when no phrases", async ({ page }) => {
     await page.goto("/review");
 
-    // Should show heading
     await expect(page.locator("h1")).toContainText("Review");
-
-    // Should show count (be more specific to avoid strict mode violation)
     await expect(page.locator("text=/\\d+ phrases? pending review/i")).toBeVisible();
-
-    // Should have Refresh button
     await expect(page.locator('button:has-text("Refresh")')).toBeVisible();
   });
 
   test("library page filters work", async ({ page }) => {
     await page.goto("/library");
 
-    // Click each filter
     await page.click('button:has-text("all")');
     await expect(page.locator('button:has-text("all")')).toHaveClass(/bg-zinc-800/);
 

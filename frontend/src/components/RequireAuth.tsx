@@ -46,7 +46,9 @@ function WelcomePage() {
   )
 }
 
-export default function RequireAuth({ children }: { children: ReactNode }) {
+const BYPASS_AUTH = import.meta.env.VITE_PLAYWRIGHT_BYPASS_AUTH === 'true'
+
+function AuthGuard({ children }: { children: ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth()
 
   if (!isLoaded) {
@@ -62,4 +64,12 @@ export default function RequireAuth({ children }: { children: ReactNode }) {
   }
 
   return <>{children}</>
+}
+
+export default function RequireAuth({ children }: { children: ReactNode }) {
+  // Allow E2E tests to bypass auth when running against localhost.
+  // VITE_PLAYWRIGHT_BYPASS_AUTH is only set in the Playwright webServer env,
+  // never in production builds.
+  if (BYPASS_AUTH) return <>{children}</>
+  return <AuthGuard>{children}</AuthGuard>
 }

@@ -1,13 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
+import { config } from 'dotenv';
+
+// Load .env.local for Clerk keys and test user credentials
+config({ path: '.env.local' });
 
 /**
  * See https://playwright.dev/docs/test-configuration.
  */
 export default defineConfig({
   testDir: "./e2e",
-
-  /* Global setup for Clerk authentication */
-  globalSetup: require.resolve("./e2e/global-setup"),
 
   /* Run tests in files in parallel */
   fullyParallel: true,
@@ -62,9 +63,10 @@ export default defineConfig({
       url: "http://localhost:5173",
       timeout: 120 * 1000,
       reuseExistingServer: !process.env.CI,
-      // Pass Clerk key to frontend dev server
+      // Pass Clerk key and test bypass flag to frontend dev server
       env: {
         VITE_CLERK_PUBLISHABLE_KEY: process.env.VITE_CLERK_PUBLISHABLE_KEY || process.env.CLERK_PUBLISHABLE_KEY || '',
+        VITE_PLAYWRIGHT_BYPASS_AUTH: 'true',
       },
     },
   ],

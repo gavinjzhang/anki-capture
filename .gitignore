@@ -45,6 +45,11 @@ lerna-debug.log*
 coverage/
 *.lcov
 
+# Playwright
+e2e/.auth/
+playwright-report/
+test-results/
+
 # Misc
 .env
 .env.*
