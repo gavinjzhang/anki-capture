@@ -194,7 +194,7 @@ export async function handleConfirmGenerated(
       }
     }
 
-    // Trigger processing for each phrase
+    // Prepare and trigger processing for all phrases in parallel
     const requestUrl = new URL(request.url);
     const userLLM = await getDecryptedLLMKey(env, userId);
     if (!userLLM) {
@@ -206,29 +206,37 @@ export async function handleConfirmGenerated(
         );
       }
     }
+
+    // Set up job IDs in DB first (sequential DB writes)
+    const processingTasks: { id: string; phrase: any; jobId: string }[] = [];
     for (const id of phrase_ids) {
       const phrase = await getPhraseForUser(env, userId, id);
       if (!phrase) continue;
 
       const jobId = crypto.randomUUID();
       await setCurrentJobForUser(env, userId, id, jobId, true);
-
-      // Trigger Modal processing
-      await triggerProcessing(
-        env,
-        {
-          phrase_id: id,
-          source_type: 'text',
-          file_url: null,
-          source_text: phrase.source_text,
-          language: phrase.detected_language,
-          webhook_url: '', // Will be built in triggerProcessing
-          job_id: jobId,
-          ...(userLLM ? { llm_provider: userLLM.provider, llm_model: userLLM.model, llm_api_key: userLLM.key } : {}),
-        },
-        requestUrl
-      );
+      processingTasks.push({ id, phrase, jobId });
     }
+
+    // Trigger all Modal processing calls in parallel
+    await Promise.all(
+      processingTasks.map(({ id, phrase, jobId }) =>
+        triggerProcessing(
+          env,
+          {
+            phrase_id: id,
+            source_type: 'text',
+            file_url: null,
+            source_text: phrase.source_text,
+            language: phrase.detected_language,
+            webhook_url: '', // Will be built in triggerProcessing
+            job_id: jobId,
+            ...(userLLM ? { llm_provider: userLLM.provider, llm_model: userLLM.model, llm_api_key: userLLM.key } : {}),
+          },
+          requestUrl
+        )
+      )
+    );
 
     return Response.json({
       message: `Processing ${phrase_ids.length} phrase${phrase_ids.length > 1 ? 's' : ''}`,

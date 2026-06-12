@@ -1,380 +1,136 @@
 # Anki Capture
 
-A serverless app for capturing Russian and Arabic phrases from screenshots, audio recordings, or text input, processing them with OCR/transcription and AI-powered grammar breakdowns, and exporting to Anki.
+> Turn a screenshot, a voice memo, or a line of text in a foreign language into a complete Anki flashcard — translation, grammar, vocabulary, and audio — in under a minute.
 
-## Architecture
+Language learners waste hours hand-building flashcards: typing the phrase, looking up each word's root and case, writing grammar notes, finding audio. Anki Capture does all of it from a single input. Snap a photo of a sign, record yourself speaking, or paste a sentence; it extracts the text, runs an AI breakdown (sentence-level grammar + per-word roots/declensions), generates native-speaker TTS, and exports a ready-to-import Anki deck. Supports **Russian, Arabic, Chinese, Spanish, and Georgian**.
 
-```
-┌─────────────────┐
-│  Frontend       │  Cloudflare Pages (React + Vite)
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  API Worker     │  Cloudflare Workers
-│  - Upload to R2 │
-│  - CRUD phrases │
-│  - Trigger jobs │
-└────────┬────────┘
-         │
-    ┌────┴────┬──────────┐
-    ▼         ▼          ▼
-┌──────┐  ┌──────┐  ┌─────────┐
-│  R2  │  │  D1  │  │  Modal  │
-│files │  │SQLite│  │processing│
-└──────┘  └──────┘  └─────────┘
-```
+**[Live demo →](https://ankicapture.com)** · **[Case study →](CASE_STUDY.md)**
 
 ## Features
 
-- **Three input modes**: Screenshot (OCR), Audio (Whisper), Text
-- **Auto language detection** for Russian and Arabic
-- **AI-powered breakdown**: Translation, transliteration, grammar notes, vocabulary with roots/declensions
-- **TTS generation** using Edge TTS for image/text inputs
-- **Review UI**: Edit all fields before approving
-- **Anki export**: ZIP with txt + audio files
+- **Three ways in** — upload an image (OCR), record/upload audio (speech-to-text), or type text directly.
+- **AI grammar breakdown** — natural translation, transliteration, sentence-level grammar notes, and a per-word table with roots, gender, declension/conjugation, and usage notes, tuned per language.
+- **Native-speaker audio** — TTS generated for image/text inputs (Google Cloud TTS, with an ElevenLabs fallback for languages Google doesn't cover).
+- **Generate from a theme** — describe a topic ("ordering at a restaurant") and get a set of practice phrases, deduped against your existing deck.
+- **Review before you commit** — every field is editable on a review screen; nothing reaches your deck unapproved.
+- **One-click Anki export** — download a ZIP with a tab-delimited `phrases.txt` and an audio media folder.
+- **Bring your own OpenAI key** — optional, stored encrypted (AES-256-GCM); the app falls back to a shared key otherwise.
+- **Cards ready in ~10–60s** — fully asynchronous pipeline with live progress (extracting → analyzing → generating audio).
 
-## Setup
+## Architecture
+
+```mermaid
+flowchart TD
+    User([User]) -->|"image / audio / text"| FE[React + Vite SPA<br/>Cloudflare Pages]
+    FE -->|"JWT-authed REST"| API[API Worker<br/>Cloudflare Workers]
+
+    API -->|"store original"| R2[(R2<br/>object storage)]
+    API -->|"phrase records"| D1[(D1<br/>SQLite)]
+    API -->|"trigger job<br/>+ signed file URL"| Modal[Modal.com<br/>GPU/Python pipeline]
+
+    Modal -->|"Whisper · Vision OCR<br/>GPT-4o · TTS"| Modal
+    Modal -->|"webhook: result + audio<br/>(Bearer auth, job-id guarded)"| API
+    API -. "adaptive polling" .-> FE
+
+    Cron[Scheduled cron<br/>every 15 min] -->|"timeout stuck jobs<br/>+ sweep R2 orphans"| API
+
+    style Modal fill:#1e3a5f,color:#fff
+    style API fill:#3d2e5f,color:#fff
+```
+
+The **Worker** is the system's spine: it authenticates every request (Clerk JWT), owns all D1/R2 state, and hands long-running work to **Modal**, which runs the GPU and Python-heavy AI steps. Modal reports back through an authenticated, idempotent webhook rather than blocking the request, and the SPA reflects progress via adaptive polling. A scheduled cron reconciles anything that falls through the cracks — jobs stuck in `processing`, or orphaned files in R2.
+
+See the [case study](CASE_STUDY.md) for the request lifecycle in detail and the reasoning behind these choices.
+
+## Tech stack
+
+- **Frontend:** React 18, Vite, TypeScript, Tailwind CSS, React Router, Clerk (auth) — deployed on Cloudflare Pages.
+- **API:** Cloudflare Workers (TypeScript), D1 (SQLite), R2 (object storage), `jose` for JWT verification, Web Crypto for HMAC signing + AES-256-GCM.
+- **AI pipeline:** Modal.com (Python 3.11) — OpenAI Whisper (transcription), Google Cloud Vision (OCR), GPT-4o (breakdown + phrase generation), Google Cloud TTS / ElevenLabs (audio).
+- **Testing:** Vitest (`@cloudflare/vitest-pool-workers` for the Worker, jsdom for the frontend), Playwright + `@clerk/testing` for authenticated E2E.
+
+## Getting started
 
 ### Prerequisites
 
-- Node.js 18+
-- Python 3.11+
-- Cloudflare account
-- Modal account
-- Google Cloud account (for Vision API)
-- OpenAI API key
+- Node.js 18+, Python 3.11+
+- A Cloudflare account (Workers, D1, R2, Pages) and a Modal account
+- Google Cloud credentials (Vision + TTS) and an OpenAI API key
+- A Clerk application for auth
 
-### 1. Cloudflare Setup
+### 1. API Worker
 
 ```bash
 cd worker
-
-# Install dependencies
 npm install
-
-# Ensure Wrangler v4 is installed in devDependencies
-npm install --save-dev wrangler@4
-
-# Login to Cloudflare
 npx wrangler login
 
-# Create D1 database
-npx wrangler d1 create anki-capture
-# Copy the database_id to wrangler.toml
-
-# Create R2 buckets (prod and dev)
+# Create D1 + R2, then init the schema
+npx wrangler d1 create anki-capture          # copy database_id into wrangler.toml
 npx wrangler r2 bucket create anki-capture-files
 npx wrangler r2 bucket create anki-capture-files-dev
-
-# Initialize database
 npm run db:init
 
-# Deploy worker
+# Secrets (never commit these)
+npx wrangler secret put MODAL_WEBHOOK_SECRET        # must match Modal's secret
+npx wrangler secret put FILE_URL_SIGNING_SECRET     # openssl rand -base64 32
+npx wrangler secret put USER_KEY_ENCRYPTION_SECRET  # for encrypting BYO API keys
+
 npm run deploy
-
-### Scheduled sweeps (timeouts)
-
-The Worker includes a cron that runs every 15 minutes to move stuck jobs from `processing` to `pending_review` and record a timeout error. The schedule is defined in `wrangler.toml` under `[triggers] crons`.
-
-### Orphan cleanup (R2)
-
-Each cron run also performs a small sweep of R2 objects and deletes those not referenced by any row in D1. This protects against older data left behind from earlier versions or manual deletions.
-
-- Env knobs:
-  - `MAX_ORPHAN_SWEEP` (default 50): maximum objects to scan per run
-  - `MIN_ORPHAN_AGE_MS` (default 24h): skip very recent objects to avoid racing in-flight operations
-
-## Auth: Clerk (recommended)
-Adds multi-user accounts with hosted auth UI. The frontend sends a Clerk JWT; the Worker verifies it and scopes all data by `user_id` (Clerk user `sub`). R2 keys are namespaced by `user_id`.
-
-Setup
-
-- Create a Clerk application at clerk.com
-- Get keys and issuer:
-  - Publishable Key (frontend) → `VITE_CLERK_PUBLISHABLE_KEY`
-  - Secret Key (backend) → not required here; we verify via JWKS
-  - JWT Issuer URL → `CLERK_JWT_ISSUER` (e.g., `https://your-app.clerk.accounts.dev`)
-
-Frontend
-
-1) Configure env in Pages or `.env.local`:
-   - `VITE_CLERK_PUBLISHABLE_KEY=pk_test_...`
-   - `VITE_API_BASE=https://anki-capture-api.<account>.workers.dev` (or leave empty to same-origin)
-2) App is already wrapped in `ClerkProvider`, with SignIn and User buttons in the navbar. Tokens are sent automatically on API requests.
-
-Worker
-
-1) Set environment variables in `wrangler.toml` or via dashboard:
-   - `CLERK_JWT_ISSUER="https://your-app.clerk.accounts.dev"`
-   - (optional) `CLERK_JWKS_URL` if you use a custom JWKS location
-2) Deploy: `cd worker && npx wrangler deploy -e production`
-
-Notes
-
-- Webhook `/api/webhook/modal` remains open. To fully lock down `/api/files`, signed URLs are enabled (see below).
-- For local dev without Clerk, the app falls back to `x-user` header or `dev@local`.
-
-### Multi-user Deployment Guide (Backfill + Migration)
-
-This guide assumes you previously ran single-user (no `user_id`) and want to migrate.
-
-1) Deploy updated Worker
-- `cd worker && npx wrangler deploy -e production`
-- Optionally set `ADMIN_EMAILS` (comma-separated) in Worker vars to restrict admin endpoints.
-
-2) Enable Cloudflare Access
-- Protect both your Worker route and your Pages domain with Access.
-- After enabling, requests include `Cf-Access-Authenticated-User-Email` which the Worker uses as `user_id`.
-
-3) Backfill `user_id` for legacy rows (via D1)
-- Decide your `user_id` convention. With Clerk we use the user `sub` (stable). Copy your id from the Clerk Dashboard → Users.
-- Run these against production D1:
-  - `npx wrangler d1 execute anki-capture --remote --command "ALTER TABLE phrases ADD COLUMN user_id TEXT;"` (ignore error if column exists)
-  - `npx wrangler d1 execute anki-capture --remote --command "CREATE INDEX IF NOT EXISTS idx_phrases_user ON phrases(user_id);"`
-  - `npx wrangler d1 execute anki-capture --remote --command "UPDATE phrases SET user_id = '<your-clerk-user-id>' WHERE user_id IS NULL;"`
-
-4) Legacy R2 keys (optional)
-- The Worker temporarily allows fetching legacy keys (`original/...`, `audio/...`) even when authenticated, so you can skip immediate R2 migration.
-- New uploads will be saved under `<user_id>/original/...` and `<user_id>/audio/...`.
-
-5) Verify
-- Open Library/Review; audio and originals should load under your namespace.
-- New uploads will be automatically namespaced.
-
-6) Add more users
-- No extra setup needed; Access email becomes their `user_id`. Their uploads and DB rows are isolated by namespace.
 ```
 
-### 2. Modal Setup
+Set `CLERK_JWT_ISSUER` and `MODAL_ENDPOINT` in `wrangler.toml` (see the committed file for the shape).
+
+### 2. Modal pipeline
 
 ```bash
 cd modal
+pip install modal && modal setup
 
-# Install Modal
-pip install modal
-
-# Login
-modal setup
-
-# Create secrets
-# Note: You can optionally customize Google Cloud TTS voices via env vars below.
 modal secret create anki-capture-secrets \
   OPENAI_API_KEY=sk-... \
-  GOOGLE_CREDENTIALS_JSON='{"type": "service_account", ...}' \
-  MODAL_WEBHOOK_SECRET=your-random-secret \
-  GCP_TTS_AR_VOICE=ar-XA-Wavenet-B \
-  GCP_TTS_RU_VOICE=ru-RU-Wavenet-C
+  GOOGLE_CREDENTIALS_JSON='{"type":"service_account",...}' \
+  MODAL_WEBHOOK_SECRET=<same-as-worker> \
+  ELEVENLABS_API_KEY=...   # optional, for Georgian and other non-Google-TTS languages
 
-# Deploy
 modal deploy app.py
+# copy the trigger URL into the Worker's MODAL_ENDPOINT
 ```
 
-After deployment, copy the Modal endpoint URL (something like `https://your-username--anki-capture-trigger.modal.run`) and update it in `worker/src/lib/modal.ts`.
-
-Tip: To see available Google Cloud TTS voices:
-
-```bash
-python - <<'PY'
-from google.cloud import texttospeech
-from google.oauth2 import service_account
-import os, json
-creds = json.loads(os.environ['GOOGLE_CREDENTIALS_JSON'])
-client = texttospeech.TextToSpeechClient(credentials=service_account.Credentials.from_service_account_info(creds))
-voices = client.list_voices().voices
-for v in voices:
-    if any(x in v.name for x in ('ru-RU','ar-XA')):
-        print(v.name, v.language_codes, v.ssml_gender)
-PY
-```
-
-### 3. Frontend Setup
+### 3. Frontend
 
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
-
-# For local development
-# Option A: Point frontend to deployed Worker
-echo 'VITE_API_BASE=https://anki-capture-api.<your-account>.workers.dev' > .env.local
-npm run dev  # Starts on http://localhost:5173
-
-# Option B: Use local Worker with Vite proxy (defaults to http://localhost:8787)
-# Make sure the Worker is running locally before this: (cd worker && npm run dev)
-# Then run:
-# npm run dev
-
-# Build for production
-npm run build
+echo 'VITE_CLERK_PUBLISHABLE_KEY=pk_test_...' > .env.local
+echo 'VITE_API_BASE=https://<your-worker>.workers.dev' >> .env.local   # or omit to use the Vite proxy
+npm run dev        # http://localhost:5173
 ```
 
-### 4. Deploy Frontend to Cloudflare Pages
+### Run the tests
 
 ```bash
-cd frontend
-npm run build
-
-# Connect to Pages via Cloudflare dashboard, or:
-npx wrangler pages deploy dist --project-name=anki-capture
+cd worker && npm test      # Worker: auth, db, signing, routes
+cd frontend && npm test    # Frontend: API client, polling hook, components
+npx playwright test        # E2E (needs CLERK_PUBLISHABLE_KEY / CLERK_SECRET_KEY)
 ```
-
-### 5. Configure Worker Secrets
-
-**IMPORTANT**: Never commit secrets to wrangler.toml. Set them using Wrangler CLI:
-
-```bash
-cd worker
-
-# Set webhook secret (must match Modal secret)
-npx wrangler secret put MODAL_WEBHOOK_SECRET
-
-# Set file URL signing secret (generate a strong random secret)
-npx wrangler secret put FILE_URL_SIGNING_SECRET
-
-# For production environment
-npx wrangler secret put MODAL_WEBHOOK_SECRET --env production
-npx wrangler secret put FILE_URL_SIGNING_SECRET --env production
-```
-
-Generate a secure random secret:
-```bash
-openssl rand -base64 32
-```
-
-Update other config in `worker/wrangler.toml`:
-- Verify D1 database_id is correct
-- Ensure R2 uses a separate dev bucket by having:
-  - `bucket_name = "anki-capture-files"`
-  - `preview_bucket_name = "anki-capture-files-dev"`
-
-Redeploy worker:
-```bash
-cd worker
-npm run deploy
-```
-
-## Local Development
-
-### Run Worker locally
-```bash
-cd worker
-npm run db:init:local  # Initialize local D1
-npm run dev            # Starts on localhost:8787
-```
-
-### Run Frontend locally
-```bash
-cd frontend
-npm run dev  # Starts on localhost:5173, proxies /api to :8787
-```
-
-## Security
-
-**See [SECURITY.md](./SECURITY.md) for comprehensive security documentation.**
-
-### Signed File URLs
-
-Files from R2 are served via short-lived HMAC-signed URLs to prevent unauthorized access:
-
-- **Required**: Set `FILE_URL_SIGNING_SECRET` via `wrangler secret put` (see setup above)
-- The API returns signed `audio_url`/`original_file_url` in phrase and export responses
-- Modal jobs receive long-lived signed URLs (24h TTL) to fetch originals
-- The `/api/files/:key` route accepts `?e=<unix_ts>&sig=<hmac>` for temporary access
-- Authenticated users can access files in their own namespace
-- **Important**: File access is now enforced - requests without valid signatures or authentication will be rejected
-
-### Webhook Security
-
-- The Modal webhook (`/api/webhook/modal`) requires Bearer token authentication
-- Set `MODAL_WEBHOOK_SECRET` via Wrangler secrets (never in wrangler.toml)
-- The same secret must be configured in Modal secrets as `MODAL_WEBHOOK_SECRET`
-- Webhook requests without valid Bearer token are rejected with 401
-
-### Multi-tenant Isolation
-
-- All user data is scoped by `user_id` from Clerk JWT
-- R2 keys are namespaced: `{user_id}/original/...`, `{user_id}/audio/...`
-- D1 queries filtered by `user_id`
-- Users cannot access other users' files or data
 
 ## Usage
 
-1. **Upload**: Open the app, choose input mode (image/audio/text), upload or type
-2. **Wait**: Modal processes the file (10-60 seconds)
-3. **Review**: Check the Review page, edit any incorrect fields, approve
-4. **Export**: Go to Export page, download ZIP
-5. **Import to Anki**:
-   - Extract ZIP
-   - Copy `media/*` to Anki's `collection.media` folder
-   - File → Import → select `phrases.txt`
-   - Map fields: Front, Back, Grammar, Vocab, Audio
+1. **Upload** — pick image / audio / text on the Upload page (or use **Generate** to create phrases from a theme).
+2. **Wait** — Modal processes the input in ~10–60s; the UI shows live progress.
+3. **Review** — correct any field on the Review page, then approve.
+4. **Export** — download the ZIP, copy `media/*` into Anki's `collection.media`, and import `phrases.txt` (fields: Front, Back, Grammar, Vocab, Audio, Transliteration).
 
-## Cost Estimates
+## Project structure
 
-For personal use (~50 phrases/month):
-
-| Service | Cost |
-|---------|------|
-| Cloudflare (Workers, D1, R2, Pages) | Free tier |
-| Modal (Whisper, processing) | ~$5-10/month |
-| OpenAI API (GPT-4 for breakdowns) | ~$2-5/month |
-| Google Vision API | Free tier (1000 images/month) |
-
-Total: ~$10-15/month for moderate use
-
-## Customization
-
-### Adding Languages
-
-1. Update types in `worker/src/types.ts` to include new language code
-2. Add voice mapping in `modal/app.py` `generate_tts()` function
-3. Add language-specific prompt in `modal/app.py` `generate_breakdown()`
-4. Update frontend language selector in `Upload.tsx`
-
-### Changing TTS Voices
-
-Edit `modal/app.py`:
-```python
-voices = {
-    "ru": "ru-RU-DmitryNeural",  # or ru-RU-SvetlanaNeural
-    "ar": "ar-SA-HamedNeural",   # or ar-EG-SalmaNeural for Egyptian
-}
 ```
-
-See [Edge TTS voices](https://github.com/rany2/edge-tts) for full list.
-
-## Troubleshooting
-
-### Phrases stuck in "processing"
-- Check Modal logs: `modal app logs anki-capture`
-- Verify webhook URL is correct in worker
-- Check webhook secret matches
-
-### OCR quality issues
-- Google Vision works best with clear, high-contrast text
-- For handwriting, results may vary
-
-### Audio transcription issues
-- Whisper medium model is used; for better Arabic, try `large`
-- Background noise affects quality
-
-## License
+worker/     Cloudflare Worker API — routing, auth, D1/R2 access, signing, cron maintenance
+  src/routes/      upload · generate · phrases · export · webhook · files · settings
+  src/lib/         auth (Clerk JWT) · db · r2 · signing (HMAC) · crypto (AES-GCM) · rateLimit
+modal/      Python AI pipeline — Whisper, Vision OCR, GPT-4o breakdown, TTS, language registry
+frontend/   React SPA — Upload, Generate, Review, Library, Export, Settings + adaptive polling
+e2e/        Playwright tests with Clerk auth
+```
 
 MIT
-### Upload Limits
-
-You can cap upload size in the Worker:
-
-- Set `MAX_UPLOAD_MB` in `wrangler.toml` (or dashboard). Default: 20
-### Modal endpoint configuration
-
-Set the Modal trigger URL via the Worker env var `MODAL_ENDPOINT` (in `wrangler.toml` or dashboard). The Worker no longer uses a hardcoded URL.
-
-Example:
-
-```
-[vars]
-MODAL_ENDPOINT = "https://<your-username>--anki-capture-trigger.modal.run"
-```
